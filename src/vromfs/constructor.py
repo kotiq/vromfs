@@ -129,26 +129,13 @@ def parse_name(offset, ctx):
         stream.seek(pos)
 
 
-class VromfsInfoStruct(ct.Struct):
-    def __init__(self, *subcons, **subconskw):
-        self.names = []
-        names = 'names' / ct.Computed(self.names)
-        subcons_ = [names]
-        subcons_.extend(subcons)
-        super().__init__(*subcons_, **subconskw)
-
-    def _parse(self, stream, context, path):
-        self.names.clear()
-        return super()._parse(stream, context, path)
-
-    def _emitparse(self, code):
-        raise NotImplementedError
-
-
-VromfsInfo = VromfsInfoStruct(
+VromfsInfo = ct.Struct(
     'names_header' / ct.Aligned(16, NamesDataHeader),
     'data_header' / ct.Aligned(16, NamesDataHeader),
     'hash_header' / ct.If(this.names_header.offset == 0x30, ct.Aligned(16, HashHeader)),
+
+    'names' / ct.Computed([]),
+    ct.Computed(lambda c: c.names.clear()),
 
     ct.Seek(this.names_header.offset),
     'names_info' / (NameInfo * parse_name)[this.names_header.count],
