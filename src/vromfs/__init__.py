@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 import hashlib
 import typing as t
-from .constructor import BinContainer, FileInfo
+from .parser import BinContainer, FileInfo
 from .reader import RangedReader
 
 
@@ -124,15 +124,9 @@ class VromfsBinFile:
         opath.parent.mkdir(parents=True, exist_ok=True)
         istream = self.container.info.stream
         with open(opath, 'wb') as ostream:
-            istream.seek(info.offset)
-
-            n, r = divmod(info.size, self.chunk_size)
-            for _ in range(n):
-                bs = istream.read(self.chunk_size)
-                ostream.write(bs)
-            if r:
-                bs = istream.read(r)
-                ostream.write(bs)
+            reader = RangedReader(istream, info.offset, info.offset + info.size)
+            for chunk in iter(lambda: reader.read(self.chunk_size), b''):
+                ostream.write(chunk)
 
         return opath
 
@@ -141,13 +135,13 @@ class VromfsBinFile:
 
         inner: проверка по контрольным суммам файлов, если они есть."""
 
-        stream: io.BufferedReader = self.container.info.stream
+        istream: io.BufferedReader = self.container.info.stream
 
         if self.container.md5 is None:
             return CheckResult(None, None)
 
         m = hashlib.md5()
-        for chunk in iter(lambda: stream.read(self.chunk_size), b''):
+        for chunk in iter(lambda: istream.read(self.chunk_size), b''):
             m.update(chunk)
         md5 = m.digest()
         status = md5 == self.container.md5
@@ -160,8 +154,8 @@ class VromfsBinFile:
                 failed = []
                 for info in files_info:
                     m = hashlib.sha1()
-                    stream_ = RangedReader(stream, info.offset, info.offset + info.size)
-                    for chunk in iter(lambda: stream_.read(self.chunk_size), b''):
+                    reader = RangedReader(istream, info.offset, info.offset + info.size)
+                    for chunk in iter(lambda: reader.read(self.chunk_size), b''):
                         m.update(chunk)
                     if m.digest() != info.sha1:
                         failed.append(info.name)

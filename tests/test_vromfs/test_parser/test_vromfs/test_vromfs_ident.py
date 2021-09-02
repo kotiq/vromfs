@@ -2,7 +2,7 @@
 
 import io
 import construct as ct
-from vromfs.constructor import Vromfs, VromfsWrapped, RangedReader
+from vromfs.parser import Vromfs, VromfsWrapped, RangedReader
 from .data import vromfs_bs_20, files_info_20
 
 vromfs_offset = 0x10

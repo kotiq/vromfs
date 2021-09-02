@@ -1,6 +1,6 @@
 from pathlib import Path
 import construct as ct
-from vromfs.constructor import FileInfo
+from vromfs.parser import FileInfo
 
 
 vromfs_bs_20 = bytes.fromhex(

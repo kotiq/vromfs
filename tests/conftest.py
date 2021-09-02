@@ -1,6 +1,9 @@
 from pathlib import Path
 import pytest
 
+# 6.2
+# pytest_plugins = "pytester"
+
 
 def pytest_addoption(parser):
     binrespath = {
@@ -26,20 +29,20 @@ def pytest_addoption(parser):
 
 
 @pytest.fixture(scope='session')
-def binrespath(request):
-    return Path(request.config.getini('binrespath'))
+def binrespath(pytestconfig):
+    return Path(pytestconfig.getini('binrespath'))
 
 
 @pytest.fixture(scope='session')
-def buildpath(request):
-    return Path(request.config.getini('buildpath'))
+def buildpath(pytestconfig):
+    return Path(pytestconfig.getini('buildpath'))
 
 
 @pytest.fixture(scope='session')
-def cdkpath(request):
-    return Path(request.config.getini('cdkpath'))
+def cdkpath(pytestconfig):
+    return Path(pytestconfig.getini('cdkpath'))
 
 
 @pytest.fixture(scope='session')
-def gamepaths(request):
-    return tuple(map(Path, request.config.getini('gamepaths')))
+def gamepaths(pytestconfig):
+    return tuple(map(Path, pytestconfig.getini('gamepaths')))

@@ -3,7 +3,7 @@
 import io
 import construct as ct
 import pytest
-from vromfs.constructor import Obfuscated
+from vromfs.parser import Obfuscated
 
 ks = [bytes.fromhex(s) for s in ('55aa55aa', '0ff00ff0', '55aa55aa', '48124812')]
 

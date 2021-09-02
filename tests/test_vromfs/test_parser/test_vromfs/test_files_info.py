@@ -5,7 +5,7 @@ from pathlib import Path
 import typing as t
 import pytest
 from helpers import make_outpath
-from vromfs.constructor import BinContainer, RangedReader, FileInfo
+from vromfs.parser import BinContainer, RangedReader, FileInfo
 
 outpath = make_outpath(__name__)
 

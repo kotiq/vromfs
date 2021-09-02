@@ -1,5 +1,6 @@
 from pathlib import Path
 import pytest
+from pytest_lazyfixture import lazy_fixture
 from vromfs import VromfsBinFile
 
 
@@ -28,9 +29,9 @@ def checked_not_compressed_file(binrespath: Path, request) -> VromfsBinFile:
 
 
 @pytest.fixture(scope='session', params=[
-    pytest.lazy_fixture('checked_compressed_file'),
-    pytest.lazy_fixture('checked_not_compressed_file'),
-    pytest.lazy_fixture('not_checked_compressed_file'),
+    lazy_fixture('checked_compressed_file'),
+    lazy_fixture('checked_not_compressed_file'),
+    lazy_fixture('not_checked_compressed_file'),
 ])
 def vromfs_bin_file(binrespath: Path, request):
     return request.param

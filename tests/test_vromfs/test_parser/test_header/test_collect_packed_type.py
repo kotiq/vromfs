@@ -3,18 +3,11 @@
 from collections import defaultdict
 from pathlib import Path
 import typing as t
-from vromfs.constructor import BinHeader
+from vromfs.parser import BinHeader
 from helpers import make_outpath
+from test_vromfs.test_parser import containers
 
 outpath = make_outpath(__name__)
-
-
-def containers(dir_path: Path) -> t.Generator[Path, None, None]:
-    for path in dir_path.iterdir():
-        if path.is_dir():
-            yield from containers(path)
-        elif path.name.endswith('.vromfs.bin'):
-            yield path
 
 
 def test_collect_packed_type(gamepaths: t.Sequence[Path], outpath: Path):

@@ -1,7 +1,7 @@
 """Проверка VromfsInfo и FilesInfo."""
 
 import pytest
-from vromfs.constructor import VromfsInfo, FilesInfo
+from vromfs.parser import VromfsInfo, FilesInfo
 from .data import vromfs_bs_20, vromfs_bs_30, info_20, info_30, files_info_20, files_info_30
 
 
