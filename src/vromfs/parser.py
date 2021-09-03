@@ -3,7 +3,7 @@
 import io
 import hashlib
 import typing as t
-import typing_extensions as te
+from dataclasses import dataclass
 from pathlib import Path
 import zstandard
 import construct as ct  # type: ignore
@@ -30,7 +30,7 @@ def getvalue(val: VT[T], context: ct.Container) -> T:
     return val(context) if callable(val) else val
 
 
-def not_implemented(obj, ctx) -> t.NoReturn:
+def not_implemented(obj: t.Any, context: ct.Container) -> t.NoReturn:
     raise NotImplementedError
 
 
@@ -56,26 +56,26 @@ BinHeader = ct.Struct(
 )
 
 
-class ZstdCompressed(ct.Adapter):
-    def __init__(self, subcon, max_output_size: VT[int]):
+class ZstdCompressed(ct.Adapter):  # type: ignore
+    def __init__(self, subcon: ct.Construct, max_output_size: VT[int]):
         super().__init__(subcon)
         self.max_output_size = max_output_size
 
-    def _decode(self, obj: bytes, context, path) -> bytes:
+    def _decode(self, obj: t.ByteString, context: ct.Container, path: str) -> bytes:
         max_output_size = getvalue(self.max_output_size, context)
         return zstandard.decompress(obj, max_output_size)
 
 
-def inplace_xor(buffer: bytearray, from_: int, sz: int, key: t.Iterable[int]):
+def inplace_xor(buffer: bytearray, from_: int, sz: int, key: t.Iterable[int]) -> None:
     it = iter(key)
     for i in range(from_, from_ + sz):
         buffer[i] ^= next(it)
 
 
-class Obfuscated(ct.Adapter):
-    ks = [bytes.fromhex(s) for s in ('55aa55aa', '0ff00ff0', '55aa55aa', '48124812')]
+class Obfuscated(ct.Adapter):  # type: ignore
+    ks: t.ClassVar[t.Sequence[bytes]] = [bytes.fromhex(s) for s in ('55aa55aa', '0ff00ff0', '55aa55aa', '48124812')]
 
-    def _decode(self, obj: bytes, context, path):
+    def _decode(self, obj: bytes, context: ct.Container, path: str) -> bytearray:
         buffer = bytearray(obj)
         size = len(obj)  # 'int26ul' mask 0x03ff_ffff
         key_sz = sum(map(len, self.ks))
@@ -105,19 +105,31 @@ HashHeader = ct.Struct(
 NameInfo = ct.Int64ul
 
 
-class DatumInfoT(t.NamedTuple):
+class DatumInfoPair(t.NamedTuple):
     offset: int
     size: int
 
 
 DatumInfo = ct.ExprAdapter(ct.Int32ul[2],
-                           lambda obj, ctx: DatumInfoT(*obj),
+                           lambda obj, ctx: DatumInfoPair(*obj),
                            not_implemented)
 
 
-def parse_name(offset, ctx):
-    stream: io.BytesIO = ctx._io
-    names = ctx.names
+@dataclass
+class VromfsInfoData:
+    _io: t.BinaryIO
+    names_header: t.Sequence[int]
+    data_header: t.Sequence[int]
+    hash_header: t.Optional[t.Sequence[int]]
+    names_info: t.Sequence[int]
+    names: t.List[Path]
+    data_info: t.Sequence[DatumInfoPair]
+    hash_info: t.Sequence[t.Optional[bytes]]
+
+
+def parse_name(offset: int, context: VromfsInfoData) -> None:
+    stream = context._io
+    names = context.names
     pos = stream.tell()
     stream.seek(offset)
     try:
@@ -153,16 +165,6 @@ VromfsInfo = ct.Struct(
 )
 
 
-class VromfsInfoT(te.Protocol):
-    names_header: t.Sequence[int]
-    data_header: t.Sequence[int]
-    hash_header: t.Optional[t.Sequence[int]]
-    names_info: t.Sequence[int]
-    names: t.Sequence[Path]
-    data_info: t.Sequence[DatumInfoT]
-    hash_info: t.Sequence[t.Optional[bytes]]
-
-
 class FileInfo(t.NamedTuple):
     name: Path
     offset: int
@@ -170,8 +172,8 @@ class FileInfo(t.NamedTuple):
     sha1: t.Optional[bytes]
 
 
-class FilesInfoAdapter(ct.Adapter):
-    def _decode(self, obj: VromfsInfoT, context, path) -> t.Sequence[FileInfo]:
+class FilesInfoAdapter(ct.Adapter):  # type: ignore
+    def _decode(self, obj: VromfsInfoData, context: ct.Container, path: str) -> t.Sequence[FileInfo]:
         return tuple(FileInfo(name, data_offset, data_size, sha1)
                      for name, (data_offset, data_size), sha1
                      in zip(obj.names, obj.data_info, obj.hash_info))
@@ -180,48 +182,58 @@ class FilesInfoAdapter(ct.Adapter):
 FilesInfo = FilesInfoAdapter(VromfsInfo)
 
 
-def _parse_files_info(stream, context, path) -> ct.Container:
+@dataclass
+class FilesInfoData:
+    files_info: t.Sequence[FileInfo]
+    stream: t.Union[RangedReader, io.BufferedIOBase]
+
+
+def _parse_files_info(stream: t.Union[RangedReader, io.BufferedIOBase],
+                      context: ct.Container, path: str) -> FilesInfoData:
     files_info = FilesInfo._parsereport(stream, context, path)
-    return ct.Container(files_info=files_info, stream=stream)
+    return FilesInfoData(files_info=files_info, stream=stream)
 
 
-class Vromfs(ct.Construct):
+class Vromfs(ct.Construct):  # type: ignore
     def __init__(self, vromfs_offset: VT[int], size: VT[int]):
         super().__init__()
         self.vromfs_offset = vromfs_offset
         self.size = size
 
-    def _parse(self, stream, context, path) -> ct.Container:
+    def _parse(self, stream: io.BufferedIOBase, context: ct.Container, path: str) -> FilesInfoData:
         vromfs_offset = getvalue(self.vromfs_offset, context)
         size = getvalue(self.size, context)
         vromfs_stream = RangedReader(stream, vromfs_offset, vromfs_offset + size)
         return _parse_files_info(vromfs_stream, context, path)
 
 
-class VromfsWrapped(ct.Subconstruct):
-    def _parse(self, stream, context, path) -> ct.Container:
+class VromfsWrapped(ct.Subconstruct):  # type: ignore
+    def _parse(self, stream: io.BufferedIOBase, context: ct.Container, path: str) -> FilesInfoData:
         vromfs_bs = self.subcon._parsereport(stream, context, path)
         vromfs_stream = io.BytesIO(vromfs_bs)
         return _parse_files_info(vromfs_stream, context, path)
 
 
-class Raise(ct.Construct):
-    def __init__(self, cls: type, *args: VT[T], **kwargs: VT[T]):
+class Raise(ct.Construct):  # type: ignore
+    def __init__(self, cls: t.Type[Exception], *args: t.Any):
         super().__init__()
         self.cls = cls
         self.args = args
-        self.kwargs = kwargs
 
-    def _parse(self, stream, context, path):
+    def _parse(self, stream: t.Any, context: ct.Container, path: str) -> t.NoReturn:
         args = [getvalue(arg, context) for arg in self.args]
-        kwargs = {k: getvalue(v, context) for k, v in self.kwargs.items()}
-        raise self.cls(*args, **kwargs)
+        raise self.cls(*args)
 
 
 class UnpackNotImplemented(Exception):
-    def __str__(self):
+    def __str__(self) -> str:
         type_ = self.args[0]
         return 'The construct for the given packed type={:#x} is not implemented yet.'.format(type_)
+
+@dataclass
+class BinContailerData:
+    info: FilesInfoData
+    md5: t.Optional[bytes]
 
 
 BinContainer = ct.Struct(

@@ -3,13 +3,13 @@ import typing as t
 
 
 class RangedReader:
-    def __init__(self, wrapped: io.BufferedIOBase, from_: int, to: int):
+    def __init__(self, wrapped: t.Union['RangedReader', io.BufferedIOBase], from_: int, to: int):
         self.wrapped = wrapped
         self.from_ = from_
         self.to = to
         self.pos = 0
 
-    def seek(self, target, whence=io.SEEK_SET):
+    def seek(self, target: int, whence: int = io.SEEK_SET) -> int:
         if whence == io.SEEK_SET:
             if target < 0:
                 raise ValueError('negative seek value {}'.format(target))
@@ -48,57 +48,3 @@ class RangedReader:
                 self.pos += len(data)
 
         return data
-
-
-def trace_reader(*funcnames: str):
-    def cls_dec(cls: t.Type):
-        init = cls.__init__
-
-        def __init__(self, *args, log=None, **kwargs):
-            init(self, *args, **kwargs)
-            self.log = log
-
-        cls.__init__ = __init__
-
-        def trace_meth(meth):
-            def meth_(self, *args, **kwargs):
-                returns = meth(self, *args, *kwargs)
-                if self.log:
-                    print(f'{meth.__qualname__}: self={self}, args={args}, kwargs={kwargs}, returns={returns}',
-                          file=self.log)
-                return returns
-
-            return meth_
-
-        for funcname in funcnames:
-            setattr(cls, funcname, trace_meth(getattr(cls, funcname)))
-
-        return cls
-
-    return cls_dec
-
-
-@trace_reader('close',
-              'closed',
-              'detach',
-              'fileno',
-              'flush',
-              'getbuffer',
-              'getvalue',
-              'isatty',
-              'read',
-              'read1',
-              'readable',
-              'readinto',
-              'readinto1',
-              'readline',
-              'readlines',
-              'seek',
-              'seekable',
-              'tell',
-              'truncate',
-              'writable',
-              'write',
-              'writelines')
-class ProbeReader(io.BytesIO):
-    pass
