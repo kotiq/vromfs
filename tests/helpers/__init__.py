@@ -18,7 +18,7 @@ def make_outpath(name):
 
 def make_tmppath(name):
     @pytest.fixture(scope='module')
-    def tmppath(tmpdir_factory):
-        return Path(tmpdir_factory.mktemp(name))
+    def tmppath(tmp_path_factory):
+        return tmp_path_factory.mktemp(name)
 
     return tmppath

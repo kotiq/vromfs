@@ -2,7 +2,6 @@ import io
 import os
 from pathlib import Path
 import hashlib
-import itertools as itt
 import typing as t
 from .parser import BinContainer, FileInfo, BinContailerData
 from .reader import RangedReader
@@ -12,9 +11,11 @@ __all__ = ['CheckResult', 'VromfsBinFile']
 
 class CheckResult(t.NamedTuple):
     status: t.Optional[bool]
-    """Статус проверки: True: успех, False: неудача, None: не применимо"""
+    """Статус проверки: True: успех, False: неудача, None: не применимо."""
+
     failed: t.Optional[t.Sequence[Path]]
-    """Список не прошедших проверку в случае неудачи для несжатого образа, иначе None.
+    """
+    Список не прошедших проверку в случае неудачи для несжатого образа, иначе None.
     None для сжатого образа для любого статуса.
     """
 
@@ -22,10 +23,29 @@ class CheckResult(t.NamedTuple):
 FileItem = t.Union[str, Path, FileInfo]
 
 
+class VromfsError(Exception):
+    pass
+
+
+class UnpackError(Exception):
+    pass
+
+
 class VromfsBinFile:
-    chunk_size: t.ClassVar[int] = 2**20
+    """Интерфейс, подобный zipfile.ZipFile."""
+
+    chunk_size: int = 2**20
 
     def __init__(self, name_or_stream: t.Union[os.PathLike, io.BufferedReader]):  # type: ignore
+        """
+        Первичная распаковка образа.
+        Для несжатого образа файл следует держать открытым.
+
+        :param name_or_stream: путь или открытый двоичный файл.
+        :raises TypeError: name_or_stream не PathLike и не BufferedReader
+        :raises UnpackError: при ошибке распаковки
+        """
+
         if isinstance(name_or_stream, os.PathLike):
             name = os.fspath(name_or_stream)
             stream = open(name, 'rb')
@@ -34,11 +54,22 @@ class VromfsBinFile:
         else:
             raise TypeError("Ожидалось PathLike | BufferedReader: {}".format(type(name_or_stream)))
 
-        self.container: BinContailerData = BinContainer.parse_stream(stream)
+        try:
+            self.container: BinContailerData = BinContainer.parse_stream(stream)
+        except Exception as e:
+            raise UnpackError("Ошибка при первичной распаковке: {0}".format(stream)) from e
+
         self.info_map = {info.name: info for info in self.container.info.files_info}
 
-    def get_info(self, name_or_path: t.Union[str, Path]) -> t.Optional[FileInfo]:
-        """FileInfo по имени, None, если нет."""
+    def get_info(self, name_or_path: t.Union[str, Path]) -> FileInfo:
+        """
+        FileInfo по имени или пути.
+
+        :param name_or_path: имя или путь
+        :return: FileInfo, содержащий путь
+        :raises KeyError: искомый FileInfo отсутствует
+        :raises TypeError: name_of_path не str и не Path
+        """
 
         if isinstance(name_or_path, str):
             name = Path(name_or_path)
@@ -47,20 +78,33 @@ class VromfsBinFile:
         else:
             raise TypeError("Ожидалось str | Path: {}".format(type(name_or_path)))
 
-        return self.info_map.get(name)
+        try:
+            info = self.info_map[name]
+        except KeyError:
+            raise KeyError("Нет FileInfo, содержащего путь {}".format(name))
+
+        return info
 
     def name_list(self) -> t.Sequence[Path]:
-        """Список имен в образе."""
+        """
+        :return: cписок путей в образе.
+        """
 
         return [info.name for info in self.container.info.files_info]
 
     def info_list(self) -> t.Sequence[FileInfo]:
-        """Список узлов в образе."""
+        """
+        :return: список FileInfo в образе.
+        """
 
         return self.container.info.files_info
 
     def print_dir(self, file: t.Optional[t.TextIO] = None) -> None:
-        """Сводка об архиве в file"""
+        """
+        Вывод сводки об архиве в file: путь, размер, контрольная сумма, если есть.
+
+        :param file: открытый текстовый файл
+        """
 
         files_info = self.container.info.files_info
         if not files_info:
@@ -83,10 +127,17 @@ class VromfsBinFile:
 
     def extract(self, item: FileItem,
                 path: t.Optional[os.PathLike] = None  # type: ignore
-                ) -> t.Sequence[Path]:
-        """Извлечение item в директорию path и список путей извлеченных файлов.
+                ) -> Path:
+        """
+        Извлечение item в директорию path.
 
-        path - текущая директория, если не указана.
+        :param item: строка, путь или FileInfo
+        :param path: путь выходной директории; текущая директория, если не указан.
+        :return: путь файла в выходной директории path
+        :raises KeyError: item отсутствует
+        :raises TypeError: не удалось построить Path по указанному path
+        :raises TypeError: item не str и не Path
+        :raises EnvironmentError: ошибка ввода-вывода
         """
 
         if path is None:
@@ -94,17 +145,21 @@ class VromfsBinFile:
         elif not isinstance(path, Path):
             path = Path(path)
 
-        opath = self._extract_item(item, path)
-        return [opath] if opath is not None else []
+        return self._extract_item(item, path)
 
     def extract_all(self,
                     path: t.Optional[os.PathLike] = None,  # type: ignore
                     items: t.Optional[t.Sequence[FileItem]] = None
-                    ) -> t.Sequence[Path]:
-        """Извлечение items в директорию path и список путей извлеченных файлов.
+                    ) -> None:
+        """
+        Извлечение items в директорию path.
 
-        path - текущая директория, если не указана.
-        items - все элементы, если не указаны.
+        :param path: путь PathLike выходной директории; текущая директория, если не указан.
+        :param items: FileItem, файлы которых подлежат извлечению; все, если не указано
+        :raises KeyError: один из items отсутствует
+        :raises TypeError: не удалось построить Path по указанному path
+        :raises TypeError: один из item не str и не Path
+        :raises EnvironmentError: ошибка ввода-вывода
         """
 
         if items is None:
@@ -115,31 +170,53 @@ class VromfsBinFile:
         elif not isinstance(path, Path):
             path = Path(path)
 
-        return list(itt.filterfalse(lambda p: p is None,
-                    map(lambda item: self._extract_item(item, path), items)))  # type: ignore
+        for item in items:
+            self._extract_item(item, path)
 
-    def _extract_item(self, item: FileItem, path: Path) -> t.Optional[Path]:
+    def _chunk_reader(self, reader: RangedReader) -> t.Iterable[bytes]:
+        """
+        Итератор reader байтовых строк размером не более chunk_size
+
+        :param reader: объект, реализующий протокол файла
+        :return: байтовые строки
+        :raises TypeError: объект не Iterable
+        :raises EnvironmentError: ошибка ввода-вывода
+        """
+
+        return iter(lambda: reader.read(self.chunk_size), b'')
+
+    def _extract_item(self, item: FileItem, path: Path) -> Path:
+        """
+        Извлечение файла, связанного с item, в директорию path.
+
+        :param item: FileItem целевого файла
+        :param path: путь выходной директории
+        :return: путь файла в выходной директории path
+        :raises KeyError: один из items отсутствует
+        :raises TypeError: item не str и не Path
+        :raises EnvironmentError: ошибка ввода-вывода
+        """
+
         if not isinstance(item, FileInfo):  # str | Path
-            info = self.get_info(item)
-            if info is None:
-                return None
-        else:
-            info = item
+            item = self.get_info(item)
 
-        opath = path / info.name
-        opath.parent.mkdir(parents=True, exist_ok=True)
+        out_path = path / item.name
+        out_path.parent.mkdir(parents=True, exist_ok=True)
         istream = self.container.info.stream
-        with open(opath, 'wb') as ostream:
-            reader = RangedReader(istream, info.offset, info.offset + info.size)
-            for chunk in iter(lambda: reader.read(self.chunk_size), b''):
+        with open(out_path, 'wb') as ostream:
+            reader = RangedReader(istream, item.offset, item.offset + item.size)
+            for chunk in self._chunk_reader(reader):
                 ostream.write(chunk)
 
-        return opath
+        return out_path
 
     def check(self, inner: bool = False) -> CheckResult:
-        """Проверка содержимого по контрольной сумме в контейнере.
+        """
+        Проверка содержимого по контрольной сумме в контейнере.
 
-        inner: проверка по контрольным суммам файлов, если они есть."""
+        :param inner: проверка по контрольным суммам файлов
+        :return: результат проверки
+        """
 
         istream: t.Union[RangedReader, io.BufferedIOBase] = self.container.info.stream
 
@@ -161,7 +238,7 @@ class VromfsBinFile:
                 for info in files_info:
                     m = hashlib.sha1()
                     reader = RangedReader(istream, info.offset, info.offset + info.size)
-                    for chunk in iter(lambda: reader.read(self.chunk_size), b''):
+                    for chunk in self._chunk_reader(reader):
                         m.update(chunk)
                     if m.digest() != info.sha1:
                         failed.append(info.name)
