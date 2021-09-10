@@ -1,7 +1,7 @@
 import io
 import typing as t
 
-
+# todo: BufferedIOBase iface
 class RangedReader:
     def __init__(self, wrapped: t.Union['RangedReader', io.BufferedIOBase], from_: int, to: int):
         self.wrapped = wrapped

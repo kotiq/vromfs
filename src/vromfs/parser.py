@@ -9,6 +9,7 @@ import zstandard
 import construct as ct  # type: ignore
 from construct import this
 from .reader import RangedReader
+from .typed_named_tuple import TypedNamedTuple
 
 VRFS = b'VRFs'
 VRFX = b'VRFx'
@@ -105,14 +106,18 @@ HashHeader = ct.Struct(
 NameInfo = ct.Int64ul
 
 
-class DatumInfoPair(t.NamedTuple):
+class DatumInfo(t.NamedTuple):
     offset: int
     size: int
 
 
-DatumInfo = ct.ExprAdapter(ct.Int32ul[2],
-                           lambda obj, ctx: DatumInfoPair(*obj),
-                           not_implemented)
+DatumInfoCon = TypedNamedTuple(
+    DatumInfo,
+    ct.Sequence(
+        'offset' / ct.Int32ul,
+        'size' / ct.Int32ul,
+    )
+)
 
 
 @dataclass
@@ -123,7 +128,7 @@ class VromfsInfoData:
     hash_header: t.Optional[t.Sequence[int]]
     names_info: t.Sequence[int]
     names: t.List[Path]
-    data_info: t.Sequence[DatumInfoPair]
+    data_info: t.Sequence[DatumInfo]
     hash_info: t.Sequence[t.Optional[bytes]]
 
 
@@ -154,7 +159,7 @@ VromfsInfo = ct.Struct(
     'names_info' / (NameInfo * parse_name)[this.names_header.count],
 
     ct.Seek(this.data_header.offset),
-    'data_info' / ct.Aligned(16, ct.Aligned(16, DatumInfo)[this.data_header.count]),
+    'data_info' / ct.Aligned(16, ct.Aligned(16, DatumInfoCon)[this.data_header.count]),
 
     ct.If(this.hash_header, ct.Seek(this.hash_header.begin_offset)),
     'hash_info' / ct.IfThenElse(
@@ -182,8 +187,7 @@ class FilesInfoAdapter(ct.Adapter):  # type: ignore
 FilesInfo = FilesInfoAdapter(VromfsInfo)
 
 
-@dataclass
-class FilesInfoData:
+class FilesInfoData(t.NamedTuple):
     files_info: t.Sequence[FileInfo]
     stream: t.Union[RangedReader, io.BufferedIOBase]
 
