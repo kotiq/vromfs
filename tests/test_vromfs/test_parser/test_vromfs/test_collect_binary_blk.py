@@ -21,7 +21,7 @@ def starts_with(prefix: bytes):
 
 
 is_bbf = starts_with(b'\x00BBF')
-is_bbz = starts_with(b'\x00BBz')
+is_bbf_zlib = starts_with(b'\x00BBz')
 is_fat = starts_with(b'\x01')
 is_fat_zstd = starts_with(b'\x02')
 is_slim = starts_with(b'\x03')
@@ -35,7 +35,7 @@ def is_text(bs: bytes) -> bool:
 
 
 BBF = 'bbf'
-BBZ = 'bbz'
+BBF_ZLIB = 'bbf_zlib'
 FAT = 'fat'
 FAT_ZSTD = 'fat_zstd'
 SLIM = 'slim'
@@ -86,7 +86,7 @@ def test_collect_blk_summary(
     rs: t.List[Record] = []
     # dctx = zstandard.ZstdDecompressor(format=zstandard.FORMAT_ZSTD1)
 
-    types_ = (BBF, BBZ, FAT, FAT_ZSTD, SLIM, SLIM_ZSTD, SLIM_SZTD_DICT,)
+    types_ = (BBF, BBF_ZLIB, FAT, FAT_ZSTD, SLIM, SLIM_ZSTD, SLIM_SZTD_DICT,)
     samples = dict.fromkeys(types_)
 
     for gamepath in gamepaths:
@@ -126,8 +126,8 @@ def test_collect_blk_summary(
                         maybe_packed_head = istream.read(head_sz)
                         if is_bbf(maybe_packed_head):
                             type_ = BBF
-                        elif is_bbz(maybe_packed_head):
-                            type_ = BBZ
+                        elif is_bbf_zlib(maybe_packed_head):
+                            type_ = BBF_ZLIB
                         elif is_fat(maybe_packed_head):
                             type_ = FAT
                         elif is_fat_zstd(maybe_packed_head):
@@ -149,11 +149,12 @@ def test_collect_blk_summary(
 
                         if type_ in types_:
                             if samples[type_] is None:
-                                reader = RangedReader(istream, file_info.offset, file_info.offset+file_info.size)
-                                sample_path = samples_path / type_ / file_info.name.name
-                                sample_path.parent.mkdir(parents=True, exist_ok=True)
-                                sample_path.write_bytes(reader.read())
-                                samples[type_] = str(rpath / file_info.name)
+                                if file_info.size > 8:
+                                    reader = RangedReader(istream, file_info.offset, file_info.offset+file_info.size)
+                                    sample_path = samples_path / type_ / file_info.name.name
+                                    sample_path.parent.mkdir(parents=True, exist_ok=True)
+                                    sample_path.write_bytes(reader.read())
+                                    samples[type_] = str(rpath / file_info.name)
 
                         # if type_ in (FAT_ZSTD, SLIM_ZSTD, SLIM_SZTD_DICT):
                         #     reader = RangedReader(istream, file_info.offset, file_info.offset+file_info.size)

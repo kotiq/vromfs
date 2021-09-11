@@ -1,5 +1,6 @@
 construct==2.9.44
 pytest==5.4.3
 pytest-lazy-fixture==0.6.3
+sphinx==4.1.2
 typing-extensions==3.10.0.0
 zstandard==0.15.1 --install-option="--legacy"
