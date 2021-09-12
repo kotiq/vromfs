@@ -56,9 +56,12 @@ fat_zstd
 
 .. code-block:: python
 
+    ZstdCompressed = ...
+    max_output_size = ...
+
     FAT_ZSTD = Struct(
         'type' / Const(b'\x02'),
-        'fat' / RestreamData(Prefixed(Int24ul, Compressed(GreedyBytes, 'zstd')), FAT),
+        'fat' / RestreamData(Prefixed(Int24ul, ZstdCompressed(GreedyBytes, max_output_size)), FAT),
     )
 
 slim
@@ -83,8 +86,8 @@ slim_zstd
 .. code-block:: python
 
     SLIM_ZSTD = Struct(
-        'type' / Const(b'\x04')
-        'slim_content' / RestreamData(Compressed(GreedyBytes, 'zstd')), SlimContent)
+        'type' / Const(b'\x04'),
+        'slim_content' / RestreamData(ZstdCompressed(GreedyBytes, max_output_size), SlimContent),
     )
 
 slim_zstd_dict
@@ -94,12 +97,9 @@ slim_zstd_dict
 
 .. code-block:: python
 
-    dict_ = ...
-    CompressedWithDict = ...
+    dict_data = ...
 
     SLIM_ZSTD_DICT = Struct(
-        'type' / Const(b'\x05')
-        'slim_content' / RestreamData(CompressedWithDict(GreedyBytes, 'zstd', dict_), SlimContent)
+        'type' / Const(b'\x05'),
+        'slim_content' / RestreamData(ZstdCompressed(GreedyBytes, max_output_size, dict_data), SlimContent),
     )
-
-

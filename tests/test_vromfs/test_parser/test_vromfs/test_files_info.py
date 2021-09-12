@@ -12,7 +12,7 @@ outpath = make_outpath(__name__)
 
 def dump_files_info(files_info: t.Sequence[FileInfo], stream: t.TextIO):
     for i, info in enumerate(files_info):
-        print(f'{i:3} {info.name} {info.offset:#010x} {info.size:#010x}', file=stream)
+        print(f'{i:3} {info.path} {info.offset:#010x} {info.size:#010x}', file=stream)
 
 
 @pytest.mark.parametrize('rpath', [

@@ -59,7 +59,7 @@ class VromfsBinFile:
         except Exception as e:
             raise UnpackError("Ошибка при первичной распаковке: {0}".format(stream)) from e
 
-        self.info_map = {info.name: info for info in self.container.info.files_info}
+        self.info_map = {info.path: info for info in self.container.info.files_info}
 
     def get_info(self, name_or_path: t.Union[str, Path]) -> FileInfo:
         """
@@ -90,7 +90,7 @@ class VromfsBinFile:
         :return: cписок путей в образе.
         """
 
-        return [info.name for info in self.container.info.files_info]
+        return [info.path for info in self.container.info.files_info]
 
     def info_list(self) -> t.Sequence[FileInfo]:
         """
@@ -112,7 +112,7 @@ class VromfsBinFile:
 
         fmt = '{0!s:<52} {1:>12}'
         header = ["File Name", "Size"]
-        getters = [lambda o: o.name, lambda o: o.size]
+        getters = [lambda o: o.path, lambda o: o.size]
 
         checked = files_info[0].sha1 is not None
         if checked:
@@ -200,7 +200,7 @@ class VromfsBinFile:
         if not isinstance(item, FileInfo):  # str | Path
             item = self.get_info(item)
 
-        out_path = path / item.name
+        out_path = path / item.path
         out_path.parent.mkdir(parents=True, exist_ok=True)
         istream = self.container.info.stream
         with open(out_path, 'wb') as ostream:
@@ -241,7 +241,7 @@ class VromfsBinFile:
                     for chunk in self._chunk_reader(reader):
                         m.update(chunk)
                     if m.digest() != info.sha1:
-                        failed.append(info.name)
+                        failed.append(info.path)
                 return CheckResult(not failed, failed if failed else None)
 
         return CheckResult(True, None)

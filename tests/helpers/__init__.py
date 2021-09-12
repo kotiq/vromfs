@@ -22,3 +22,8 @@ def make_tmppath(name):
         return tmp_path_factory.mktemp(name)
 
     return tmppath
+
+
+def create_text(path):
+    return open(path, 'w', newline='', encoding='utf8')
+

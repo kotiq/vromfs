@@ -10,7 +10,7 @@ tmppath = make_tmppath(__name__)
 
 def test_extract(vromfs_bin_file: VromfsBinFile, tmppath: Path):
     info: FileInfo = vromfs_bin_file.info_list()[-1]
-    name = info.name
+    name = info.path
     out_parent = tmppath / vromfs_bin_file.path.stem
     path = vromfs_bin_file.extract(name, out_parent)
     assert path == out_parent / name

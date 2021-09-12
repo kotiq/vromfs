@@ -8,7 +8,7 @@ import pytest
 from test_vromfs.test_parser import containers
 from vromfs.parser import BinContainer, FileInfo
 from vromfs.reader import RangedReader
-from helpers import make_outpath
+from helpers import make_outpath, create_text
 
 outpath = make_outpath(__name__)
 
@@ -69,6 +69,11 @@ def samples_summary_path(samples_path: Path):
     return samples_path / 'samples_summary.json'
 
 
+@pytest.fixture(scope='module')
+def names_summary_path(samples_path: Path):
+    return samples_path / 'names_summary_path.json'
+
+
 class Record(te.TypedDict):
     path: str
     name: str
@@ -79,15 +84,15 @@ class Record(te.TypedDict):
 def test_collect_blk_summary(
         gamepaths: t.Sequence[Path],
         blk_summary_path: Path,
-        # packed_path: Path,
         samples_path: Path,
         samples_summary_path: Path,
+        names_summary_path: Path,
 ):
     rs: t.List[Record] = []
-    # dctx = zstandard.ZstdDecompressor(format=zstandard.FORMAT_ZSTD1)
 
     types_ = (BBF, BBF_ZLIB, FAT, FAT_ZSTD, SLIM, SLIM_ZSTD, SLIM_SZTD_DICT,)
     samples = dict.fromkeys(types_)
+    names = {}
 
     for gamepath in gamepaths:
         root = gamepath.parent
@@ -105,20 +110,34 @@ def test_collect_blk_summary(
                 head_sz = 5
                 # используется первый словарь из контейнера
                 dctx_dict: t.Optional[zstandard.ZstdDecompressor] = None
+                nm = None
 
                 for file_info in files_info:
                     if dctx_dict is None:
-                        if file_info.name.suffix == '.dict':
-                            istream.seek(file_info.offset)
-                            dict_bs = istream.read(file_info.size)
+                        if file_info.path.suffix == '.dict':
+                            reader = RangedReader(istream, file_info.offset, file_info.offset+file_info.size)
+                            dict_bs = reader.read()
                             zstd_dict = zstandard.ZstdCompressionDict(dict_bs)
                             dctx_dict = zstandard.ZstdDecompressor(dict_data=zstd_dict, format=zstandard.FORMAT_ZSTD1)
+                            dict_path = samples_path / 'names' / rpath / file_info.path
+                            dict_path.parent.mkdir(parents=True, exist_ok=True)
+                            dict_path.write_bytes(dict_bs)
 
-                    if not file_info.name.suffix == '.blk':
+                    if nm is None:
+                        if file_info.path.name == 'nm':
+                            reader = RangedReader(istream, file_info.offset, file_info.offset+file_info.size)
+                            names_bs = reader.read()
+                            names_path = samples_path / 'names' / rpath / 'nm'
+                            names_path.parent.mkdir(parents=True, exist_ok=True)
+                            names_path.write_bytes(names_bs)
+                            names[str(rpath)] = str(rpath / file_info.path)
+                            nm = True
+
+                    if not file_info.path.suffix == '.blk':
                         continue
 
                     if not file_info.size:
-                        print(f'[SKIP] VOID {rpath}, {file_info.name}')
+                        print(f'[SKIP] VOID {rpath}, {file_info.path}')
                         continue
 
                     if file_info.size >= head_sz:
@@ -142,7 +161,7 @@ def test_collect_blk_summary(
                             istream.seek(file_info.offset)
                             maybe_packed_head = istream.read(file_info.size)
                             if is_text(maybe_packed_head):
-                                print(f'[SKIP] TEXT {rpath}, {file_info.name}')
+                                print(f'[SKIP] TEXT {rpath}, {file_info.path}')
                                 continue
                             else:
                                 type_ = None
@@ -151,42 +170,20 @@ def test_collect_blk_summary(
                             if samples[type_] is None:
                                 if file_info.size > 8:
                                     reader = RangedReader(istream, file_info.offset, file_info.offset+file_info.size)
-                                    sample_path = samples_path / type_ / file_info.name.name
+                                    sample_path = samples_path / type_ / file_info.path.name
                                     sample_path.parent.mkdir(parents=True, exist_ok=True)
                                     sample_path.write_bytes(reader.read())
-                                    samples[type_] = str(rpath / file_info.name)
-
-                        # if type_ in (FAT_ZSTD, SLIM_ZSTD, SLIM_SZTD_DICT):
-                        #     reader = RangedReader(istream, file_info.offset, file_info.offset+file_info.size)
-                        #     decompressor = dctx_dict if type_ == SLIM_SZTD_DICT else dctx
-                        #     start = 4 if type_ == FAT_ZSTD else 1
-                        #     reader.seek(start)
-                        #     # fat_zstd это наследник bbz
-                        #     # [сигнатура / byte, sz / int24ul, zst архив / bytes(sz)]
-                        #     try:
-                        #         unpacked_reader = decompressor.stream_reader(reader, read_size=0x100, closefd=False)
-                        #         unpacked_head = unpacked_reader.read(head_sz)
-                        #         if type_ == FAT_ZSTD:
-                        #             assert unpacked_head.startswith(b'\x01')
-                        #         else:
-                        #             assert unpacked_head.startswith(b'\x00')
-                        #     except zstandard.ZstdError as e:
-                        #         reader.seek(0)
-                        #         packed_bs = reader.read()
-                        #         packed_file_path = packed_path / rpath / file_info.name
-                        #         packed_file_path.parent.mkdir(parents=True, exist_ok=True)
-                        #         packed_file_path.write_bytes(packed_bs)
-                        #         print(f'[FAIL] {rpath}, {file_info.name}')
+                                    samples[type_] = str(rpath / file_info.path)
                     else:
                         istream.seek(file_info.offset)
                         maybe_packed_head = istream.read(file_info.size)
                         if is_text(maybe_packed_head):
-                            print(f'[SKIP] TEXT {rpath}, {file_info.name}')
+                            print(f'[SKIP] TEXT {rpath}, {file_info.path}')
                             continue
                         else:
                             type_ = None
 
-                    name = str(file_info.name)
+                    name = str(file_info.path)
                     data = maybe_packed_head[:head_sz].hex()
                     r = Record(path=str(rpath), name=name, type=type_, data=data)
                     rs.append(r)
@@ -194,8 +191,11 @@ def test_collect_blk_summary(
     for r in rs:
         assert (r['type'] is not None), f'{r["path"]}, {r["name"]}'
 
-    with open(blk_summary_path, 'w', encoding='utf8') as ostream:
+    with create_text(blk_summary_path) as ostream:
         json.dump(rs, ostream, indent=2)
 
-    with open(samples_summary_path, 'w', encoding='utf8') as ostream:
+    with create_text(samples_summary_path) as ostream:
         json.dump(samples, ostream, indent=2)
+
+    with create_text(names_summary_path) as ostream:
+        json.dump(names, ostream, indent=2)

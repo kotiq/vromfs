@@ -171,7 +171,7 @@ VromfsInfo = ct.Struct(
 
 
 class FileInfo(t.NamedTuple):
-    name: Path
+    path: Path
     offset: int
     size: int
     sha1: t.Optional[bytes]
