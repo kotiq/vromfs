@@ -177,6 +177,7 @@ class FileInfo(t.NamedTuple):
     sha1: t.Optional[bytes]
 
 
+# todo: правило упаковки: FileInfo с путем Path('nm') - последний элемент
 class FilesInfoAdapter(ct.Adapter):  # type: ignore
     def _decode(self, obj: VromfsInfoData, context: ct.Container, path: str) -> t.Sequence[FileInfo]:
         return tuple(FileInfo(name, data_offset, data_size, sha1)
