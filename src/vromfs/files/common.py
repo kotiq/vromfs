@@ -14,5 +14,6 @@ NameCon = ct.ExprAdapter(
 Names = ct.FocusedSeq(
     'names',
     'names_count' / ct.Rebuild(ct.VarInt, len_(this.names)),
-    'names' / ct.Prefixed(ct.VarInt, NameCon[this.names_count])
-).compile()
+    'names' / ct.If(this.names_count != 0,
+                    ct.Prefixed(ct.VarInt, NameCon[this.names_count])),
+)

@@ -1,65 +1,102 @@
 import json
 from pathlib import Path
+import zstandard as zstd
 import pytest
-from vromfs.files.names import decompress_shared_names, FS, compose_names, serialize_names
+from vromfs.files.shared_names import (decompress_shared_names, compress_shared_names, compose_shared_names,
+                                       serialize_shared_names)
 from helpers import make_outpath, create_text
 
 outpath = make_outpath(__name__)
 
 
-class UnpackedFS(FS):
-    def __init__(self, root: Path):
-        super().__init__()
-        self.root = root
-
-    def bytes(self, path: Path) -> bytes:
-        return (self.root / path).read_bytes()
-
-
-@pytest.mark.parametrize('sub', ['aces', 'char'])
-def test_decompress_shared_names(sub, binrespath: Path, outpath: Path):
-    root_path = binrespath / 'vromfs' / sub
+@pytest.mark.parametrize('sub', ['aces.zstd', 'char.zstd'])
+def test_decompress_shared_names(sub: str, binrespath: Path, outpath: Path):
+    sub = Path(sub)
+    root_path = binrespath / sub
     compressed_path = root_path / 'nm'
-    fs = UnpackedFS(root_path)
-    uncompressed_path = outpath / sub / 'nm'
+    uncompressed_path = outpath / sub.with_suffix('.unzstd') / 'nm'
     uncompressed_path.parent.mkdir(parents=True, exist_ok=True)
+
+    dict_paths = tuple(root_path.glob('*.dict'))
+    if dict_paths:
+        data = dict_paths[0].read_bytes()
+        dict_data = zstd.ZstdCompressionDict(data)
+        dctx = zstd.ZstdDecompressor(dict_data)
+    else:
+        dctx = zstd.ZstdDecompressor()
+
     with open(compressed_path, 'rb') as istream:
-        names_bs = decompress_shared_names(istream, fs)
+        names_bs = decompress_shared_names(istream, dctx)
         uncompressed_path.write_bytes(names_bs)
+
+
+@pytest.mark.parametrize('sub', ['aces.unzstd', 'char.unzstd'])
+def test_compress_shared_names(sub: str, binrespath: Path, outpath: Path):
+    sub = Path(sub)
+    root_path = binrespath / sub
+    uncompressed_path = root_path / 'nm'
+    compressed_path = outpath / sub.with_suffix('.zstd') / 'nm'
+    compressed_path.parent.mkdir(parents=True, exist_ok=True)
+
+    dict_paths = tuple(root_path.glob('*.dict'))
+    if dict_paths:
+        dict_path = dict_paths[0]
+        data = dict_path.read_bytes()
+        dict_data = zstd.ZstdCompressionDict(data)
+        cctx = zstd.ZstdCompressor(dict_data=dict_data)
+    else:
+        dict_path = None
+        cctx = zstd.ZstdCompressor()
+
+    with open(compressed_path, 'wb') as ostream:
+        names_bs = uncompressed_path.read_bytes()
+        compress_shared_names(names_bs, ostream, cctx=cctx, dict_path=dict_path)
 
 
 @pytest.mark.parametrize('sub', ['aces', 'char'])
 def test_compose_shared_names(sub, binrespath: Path, outpath: Path):
-    root_path = binrespath / 'vromfs' / sub
+    root_path = binrespath / sub
     input_path = root_path / 'nm'
-    fs = UnpackedFS(root_path)
     output_path = outpath / sub / 'nm_dict.json'
     output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    dict_paths = tuple(root_path.glob('*.dict'))
+    if dict_paths:
+        data = dict_paths[0].read_bytes()
+        dict_data = zstd.ZstdCompressionDict(data)
+        dctx = zstd.ZstdDecompressor(dict_data)
+    else:
+        dctx = zstd.ZstdDecompressor()
+
     with open(input_path, 'rb') as istream, create_text(output_path) as ostream:
-        names_map = compose_names(istream, fs)
+        names_map = compose_shared_names(istream, dctx=dctx)
         json.dump(names_map, ostream, ensure_ascii=False, indent=2)
 
 
-@pytest.mark.parametrize(['sub', 'dict_path'], [
-    pytest.param('aces', Path('3d2907d0e7420dc093d67430955a607a2f467f1b79e0bea4aec49f6a9c2e4c71.dict'), id='aces'),
-    pytest.param('char', None, id='char'),
-])
-def test_serialize_shared_names(sub, dict_path, binrespath: Path, outpath: Path):
-    root_path = binrespath / 'vromfs' / sub
+@pytest.mark.parametrize('sub', ['aces', 'char'])
+def test_serialize_shared_names(sub: str, binrespath: Path, outpath: Path):
+    root_path = binrespath / sub
     input_path = root_path / 'nm'
-    fs = UnpackedFS(root_path)
     output_path = outpath / sub / 'nm.zst.bin'
     output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    dict_paths = tuple(root_path.glob('*.dict'))
+    if dict_paths:
+        dict_path = dict_paths[0]
+        data = dict_path.read_bytes()
+        dict_data = zstd.ZstdCompressionDict(data)
+        dctx = zstd.ZstdDecompressor(dict_data)
+        cctx = zstd.ZstdCompressor(dict_data=dict_data)
+    else:
+        dict_path = None
+        dctx = zstd.ZstdDecompressor()
+        cctx = zstd.ZstdCompressor()
+
     with open(input_path, 'rb') as istream, open(output_path, 'wb+') as iostream:
-        names_map = compose_names(istream, fs)
-        assert names_map.keys()
-        pos = iostream.tell()
-        serialize_names(names_map, dict_path, fs, iostream)
-        assert iostream.tell() - pos > 40
+        inv_names_map = compose_shared_names(istream, dctx=dctx)
+        assert inv_names_map
+        serialize_shared_names(inv_names_map, iostream, cctx=cctx, dict_path=dict_path)
+        assert iostream.tell() > 40
         iostream.seek(0)
-        names_map_ = compose_names(iostream, fs)
-        assert names_map_ == names_map
-
-
-
-
+        inv_names_map_ = compose_shared_names(iostream, dctx=dctx)
+        assert inv_names_map_ == inv_names_map
