@@ -1,6 +1,7 @@
 """Только распаковка."""
 
 import io
+import os
 import hashlib
 import typing as t
 from dataclasses import dataclass
@@ -92,6 +93,24 @@ class Obfuscated(ct.Adapter):  # type: ignore
 
 RawCString = ct.NullTerminated(ct.GreedyBytes)
 
+
+class NameAdapter(ct.Adapter):
+    def _decode(self, obj: bytes, context, path) -> Path:
+        raw_name = obj
+        if obj.startswith(b'\xff\x3f'):
+            raw_name = raw_name[2:]
+        name = raw_name.decode()
+        if os.path.isabs(name):
+            pos = 0
+            while name[pos] == os.path.sep:
+                pos += 1
+            name = name[pos:]
+        return Path(name)
+
+
+Name = NameAdapter(RawCString)
+
+
 NamesDataHeader = ct.Struct(
     'offset' / ct.Int32ul,
     'count' / ct.Int32ul,
@@ -127,41 +146,27 @@ class VromfsInfoData:
     data_header: t.Sequence[int]
     hash_header: t.Optional[t.Sequence[int]]
     names_info: t.Sequence[int]
-    names: t.List[Path]
+    names_data: bytes
     data_info: t.Sequence[DatumInfo]
     hash_info: t.Sequence[t.Optional[bytes]]
 
 
-def parse_name(offset: int, context: VromfsInfoData) -> None:
-    stream = context._io
-    names = context.names
-    pos = stream.tell()
-    stream.seek(offset)
-    try:
-        raw_name: bytes = RawCString.parse_stream(stream)
-        if raw_name.startswith(b'\xff\x3f'):
-            raw_name = raw_name[2:]
-        name = raw_name.decode()
-        names.append(Path(name))
-    finally:
-        stream.seek(pos)
-
-
 VromfsInfo = ct.Struct(
-    'names_header' / ct.Aligned(16, NamesDataHeader),
-    'data_header' / ct.Aligned(16, NamesDataHeader),
-    'hash_header' / ct.If(this.names_header.offset == 0x30, ct.Aligned(16, HashHeader)),
+    'names_header' / ct.Aligned(16, NamesDataHeader),  # names_info_offset, names_info_count
+    'data_header' / ct.Aligned(16, NamesDataHeader),  # data_info_offset, data_info_count
+    'hash_header' / ct.If(
+        this.names_header.offset == 0x30,
+        ct.Aligned(16, HashHeader)  # hash_data_end, hash_data_begin
+    ),
 
-    'names' / ct.Computed([]),
-    ct.Computed(lambda c: c.names.clear()),
+    ct.Check(lambda ctx: ctx.names_header.offset == ctx._io.tell()),
+    'names_info' / ct.Aligned(16, NameInfo[this.names_header.count]),
+    'names_data' / ct.Bytes(lambda ctx: ctx.data_header.offset - ctx._io.tell()),
 
-    ct.Seek(this.names_header.offset),
-    'names_info' / (NameInfo * parse_name)[this.names_header.count],
-
-    ct.Seek(this.data_header.offset),
+    ct.Check(lambda ctx: ctx.data_header.offset == ctx._io.tell()),
     'data_info' / ct.Aligned(16, ct.Aligned(16, DatumInfoCon)[this.data_header.count]),
 
-    ct.If(this.hash_header, ct.Seek(this.hash_header.begin_offset)),
+    ct.If(this.hash_header, ct.Check(lambda ctx: ctx.hash_header.begin_offset == ctx._io.tell())),
     'hash_info' / ct.IfThenElse(
         this.hash_header,
         ct.Aligned(16, ct.Bytes(20)[this.names_header.count]),
@@ -177,12 +182,21 @@ class FileInfo(t.NamedTuple):
     sha1: t.Optional[bytes]
 
 
-# todo: правило упаковки: FileInfo с путем Path('nm') - последний элемент
 class FilesInfoAdapter(ct.Adapter):  # type: ignore
     def _decode(self, obj: VromfsInfoData, context: ct.Container, path: str) -> t.Sequence[FileInfo]:
+        names: t.List[Path] = []
+        names_data_stream = io.BytesIO(obj.names_data)
+
+        if obj.names_info:
+            names_data_offset = obj.names_info[0]
+            for offset in map(names_data_offset.__rsub__, obj.names_info):
+                names_data_stream.seek(offset)
+                name = Name.parse_stream(names_data_stream)
+                names.append(name)
+
         return tuple(FileInfo(name, data_offset, data_size, sha1)
                      for name, (data_offset, data_size), sha1
-                     in zip(obj.names, obj.data_info, obj.hash_info))
+                     in zip(names, obj.data_info, obj.hash_info))
 
 
 FilesInfo = FilesInfoAdapter(VromfsInfo)
