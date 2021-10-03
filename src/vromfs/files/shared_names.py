@@ -7,7 +7,7 @@ from construct import len_, this
 import zstandard as zstd
 from blk.types import Name, Str
 from vromfs.parser import getvalue, VT
-from .common import Names
+from blk.binary.constructor import Names
 from .errors import *
 
 
@@ -74,7 +74,7 @@ class DictPath(ct.Adapter):
 CompressedSharedNames = ct.FocusedSeq(
     'names_bs',
     'hash' / ct.Rebuild(ct.Int64ul, 0x6873616868736168),  # как формируется хеш?
-    'dict_path' / ct.Rebuild(DictPath(ct.Bytes(32)), this._.dict_path),
+    'dict_path' / ct.Rebuild(DictPath(ct.Bytes(32)), this._.dict_path),  # как формируется хеш?
     'names_bs' / ZstdCompressed(ct.GreedyBytes, this._.dctx, this._.cctx, MAX_OUTPUT_SIZE),
 )
 
