@@ -12,6 +12,11 @@ def image() -> bytes:
     return b' '.join([b'hello beautiful world']*2)  # len = 43
 
 
+@pytest.fixture(scope='function')
+def image_istream(image: bytes) -> t.BinaryIO:
+    return io.BytesIO(image)
+
+
 @pytest.fixture(scope='session')
 def hash_(image: bytes) -> bytes:
     return hashlib.md5(image).digest()
@@ -125,22 +130,22 @@ def vrfs_pc_zstd_obfs_nocheck_bin_container_bs(image: bytes, obfuscated_compress
     return ostream.getvalue()
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope='function')
 def vrfs_pc_plain_bin_container_istream(vrfs_pc_plain_bin_container_bs: bytes) -> io.BytesIO:
     return io.BytesIO(vrfs_pc_plain_bin_container_bs)
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope='function')
 def vrfx_pc_plain_bin_container_istream(vrfx_pc_plain_bin_container_bs: bytes) -> io.BytesIO:
     return io.BytesIO(vrfx_pc_plain_bin_container_bs)
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope='function')
 def vrfx_pc_zstd_obfs_bin_container_istream(vrfx_pc_zstd_obfs_bin_container_bs: bytes) -> io.BytesIO:
     return io.BytesIO(vrfx_pc_zstd_obfs_bin_container_bs)
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope='function')
 def vrfs_pc_zstd_obfs_nocheck_bin_container_istream(vrfs_pc_zstd_obfs_nocheck_bin_container_bs: bytes) -> io.BytesIO:
     return io.BytesIO(vrfs_pc_zstd_obfs_nocheck_bin_container_bs)
 

@@ -2,7 +2,7 @@ import typing as t
 import pytest
 from pytest_lazyfixture import lazy_fixture
 from vromfs.constructor.lazy import BinContainer
-from test_vromfs.test_constructor import _test_parse, _test_build
+from test_vromfs.test_constructor import _test_parse
 
 vrfs_pc_plain_bin_container_istream = lazy_fixture('vrfs_pc_plain_bin_container_istream')
 vrfs_pc_plain_bin_container_bs = lazy_fixture('vrfs_pc_plain_bin_container_bs')

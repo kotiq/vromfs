@@ -7,6 +7,13 @@ import construct as ct
 import zstandard as zstd
 from construct import this
 
+T = t.TypeVar('T')
+VT = t.Union[T, t.Callable[[ct.Container], T]]
+
+
+def getvalue(val: VT[T], context: ct.Container) -> T:
+    return val(context) if callable(val) else val
+
 
 class HeaderType(Enum):
     VRFS = b'VRFs'
@@ -68,10 +75,22 @@ VersionCon = ct.ExprSymmetricAdapter(ct.Byte[4],
                                      lambda obj, ctx: tuple(reversed(obj)))
 
 
-def enum(subcon: ct.Subconstruct, enum_: t.Type[Enum]):
-    return ct.ExprAdapter(ct.Enum(subcon, enum_),
-                          lambda obj, ctx: enum_[obj],
-                          lambda obj, ctx: obj.name)
+class enum(ct.Adapter):
+    def __init__(self, subcon: ct.Subconstruct, enum_: t.Type[Enum]):
+        self.enum = enum_
+        super().__init__(ct.Enum(subcon, enum_))
+
+    def _decode(self, obj: str, context: ct.Container, path: str) -> Enum:
+        try:
+            return self.enum[obj]
+        except KeyError:
+            raise ct.MappingError("Неизвестное имя для {}: {}".format(self.enum.__name__, obj))
+
+    def _encode(self, obj: Enum, context: ct.Container, path: str) -> t.Any:
+        try:
+            return obj.name
+        except AttributeError:
+            raise ct.MappingError("Объект не содержит атрибута name: {}".format(type(obj)))
 
 
 HeaderTypeCon = enum(ct.Bytes(4), HeaderType)
