@@ -44,7 +44,7 @@ def container_type_s(container_type: bytes) -> t.Optional[bool]:
 
 
 def packet_type_poc(packed_type: int) -> t.Optional[t.Tuple[bool, bool, bool]]:
-    """zstd packed, obfuscated, md5 outer checked."""
+    """zstd packed, obfuscate, md5 outer checked."""
 
     return {
         ZSTD_OBFS_NOCHECK: (True, True, False),

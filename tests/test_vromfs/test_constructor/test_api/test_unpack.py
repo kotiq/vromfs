@@ -1,7 +1,8 @@
 import typing as t
 import pytest
 from pytest_lazyfixture import lazy_fixture
-from vromfs.constructor import unpack, UnpackResult
+from vromfs.constructor import UnpackResult
+from vromfs.constructor.lazy import unpack as lazy_unpack
 
 vrfs_pc_plain_unpack_result = lazy_fixture('vrfs_pc_plain_unpack_result')
 vrfx_pc_zstd_obfs_unpack_result = lazy_fixture('vrfx_pc_zstd_obfs_unpack_result')
@@ -21,7 +22,10 @@ vrfx_pc_zstd_obfs_bin_container_istream = lazy_fixture('vrfx_pc_zstd_obfs_bin_co
         id='vrfx_pc_zstd_obfs',
     )
 ])
-def test_unpack(bin_container_istream: t.BinaryIO, unpack_result: UnpackResult, image: bytes):
+@pytest.mark.parametrize('unpack', [
+    pytest.param(lazy_unpack, id='lazy')
+])
+def test_unpack(unpack, bin_container_istream: t.BinaryIO, unpack_result: UnpackResult, image: bytes):
     result = unpack(bin_container_istream)
     assert result.info == unpack_result.info
     bs = result.ostream.read()
