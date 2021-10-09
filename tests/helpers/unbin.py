@@ -3,8 +3,8 @@
 import logging
 import typing as t
 from pathlib import Path
-from vromfs.constructor.error import UnpackError, DecompressionError
-from vromfs.constructor.eager import unpack
+from vromfs.bin.constructor.error import UnpackError, DecompressionError
+from vromfs.bin.constructor.eager import unpack
 from helpers import make_outpath
 
 outpath = make_outpath(__name__)

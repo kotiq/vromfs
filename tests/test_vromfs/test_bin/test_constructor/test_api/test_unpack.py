@@ -1,9 +1,9 @@
 import typing as t
 import pytest
 from pytest_lazyfixture import lazy_fixture
-from vromfs.constructor import UnpackResult
-from vromfs.constructor.lazy import unpack as lazy_unpack
-from vromfs.constructor.eager import unpack as eager_unpack
+from vromfs.bin.constructor import UnpackResult
+from vromfs.bin.constructor.lazy import unpack as lazy_unpack
+from vromfs.bin.constructor.eager import unpack as eager_unpack
 
 vrfs_pc_plain_unpack_result = lazy_fixture('vrfs_pc_plain_unpack_result')
 vrfx_pc_zstd_obfs_unpack_result = lazy_fixture('vrfx_pc_zstd_obfs_unpack_result')

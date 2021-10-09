@@ -1,6 +1,6 @@
 import typing as t
-from vromfs.constructor import VersionCon
-from test_vromfs.test_constructor import _test_parse, _test_build
+from vromfs.bin.constructor import VersionCon
+from test_vromfs.test_bin.test_constructor import _test_parse, _test_build
 
 
 def test_version_parse(version_istream: t.BinaryIO, version_bs: bytes, version: t.Tuple[int, int, int, int]):

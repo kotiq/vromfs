@@ -1,7 +1,7 @@
 import io
 import typing as t
 import pytest
-from vromfs.constructor import UnpackResult, BinContainerInfo, PlatformType
+from vromfs.bin.constructor import UnpackResult, BinContainerInfo, PlatformType
 
 
 @pytest.fixture(scope='module')

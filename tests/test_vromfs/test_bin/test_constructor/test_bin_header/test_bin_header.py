@@ -1,8 +1,8 @@
 import typing as t
 import pytest
 from pytest_lazyfixture import lazy_fixture
-from vromfs.constructor import BinHeader
-from test_vromfs.test_constructor import _test_parse, _test_build
+from vromfs.bin.constructor import BinHeader
+from test_vromfs.test_bin.test_constructor import _test_parse, _test_build
 
 vrfx_pc_compressed_header_bs = lazy_fixture('vrfx_pc_compressed_header_bs')
 vrfx_pc_compressed_header = lazy_fixture('vrfx_pc_compressed_header')

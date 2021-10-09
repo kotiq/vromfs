@@ -4,7 +4,7 @@ import typing as t
 import construct as ct
 import pytest
 import zstandard as zstd
-from vromfs.constructor import HeaderType, PlatformType, PackType
+from vromfs.bin.constructor import HeaderType, PlatformType, PackType
 
 
 @pytest.fixture(scope='session')

@@ -1,8 +1,8 @@
 import typing as t
 import pytest
 from pytest_lazyfixture import lazy_fixture
-from vromfs.constructor import PlatformType
-from vromfs.constructor.eager import pack as eager_pack
+from vromfs.bin.constructor import PlatformType
+from vromfs.bin.constructor.eager import pack as eager_pack
 
 version = lazy_fixture('version')
 vrfs_pc_plain_bin_container_bs = lazy_fixture('vrfs_pc_plain_bin_container_bs')

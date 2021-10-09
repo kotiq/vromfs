@@ -1,6 +1,6 @@
 import typing as t
 import pytest
-from vromfs.constructor import HeaderType, PlatformType, PackType
+from vromfs.bin.constructor import HeaderType, PlatformType, PackType
 
 
 @pytest.fixture(scope='module')

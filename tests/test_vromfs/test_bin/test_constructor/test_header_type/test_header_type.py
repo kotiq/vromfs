@@ -1,8 +1,8 @@
 import io
 import typing as t
 import pytest
-from vromfs.constructor import HeaderType, HeaderTypeCon
-from test_vromfs.test_constructor import _test_parse, _test_build
+from vromfs.bin.constructor import HeaderType, HeaderTypeCon
+from test_vromfs.test_bin.test_constructor import _test_parse, _test_build
 
 
 @pytest.mark.parametrize(['header_type_istream', 'header_type_bs', 'header_type'], [

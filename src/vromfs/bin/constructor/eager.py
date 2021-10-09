@@ -1,6 +1,5 @@
 import hashlib
 import io
-from pathlib import Path
 import typing as t
 import construct as ct
 import zstandard as zstd
