@@ -21,7 +21,7 @@ BinContainer = ct.Struct(
 
 def decompress(istream: t.BinaryIO) -> t.BinaryIO:
     """
-    Декомпрессия сжатого образа
+    Извлечение образа из архива.
 
     :param istream: входной поток сжатого образа
     :return: выходной поток несжатого образа
@@ -43,7 +43,7 @@ obfs_ks: t.Sequence[bytes] = [bytes.fromhex(s) for s in ('55aa55aa', '0ff00ff0',
 # todo: перестроить как ленивый FileReader
 def deobfuscate(istream: t.BinaryIO, sz: int) -> t.BinaryIO:
     """
-    Восстановление заголовка и окончания
+    Восстановление частей сжатого образа.
 
     :param istream: входной поток сжатого образа
     :param sz: размер сжатого образа
@@ -65,7 +65,7 @@ def deobfuscate(istream: t.BinaryIO, sz: int) -> t.BinaryIO:
 
 def unpack(istream: t.BinaryIO) -> UnpackResult:
     """
-    Распаковка образа из bin контейнера: image.bin -> image
+    Распаковка образа из bin контейнера.
 
     :param istream: входной поток контейнера
     :return: результат распаковки
@@ -95,7 +95,7 @@ def unpack(istream: t.BinaryIO) -> UnpackResult:
                    else decompress(deobfuscate(RangedReader(istream, offset, offset+packed_size), packed_size)))
 
         return UnpackResult(
-            ostream=ostream,
+            stream=ostream,
             info=BinContainerInfo(
                 unpacked_size=size,
                 packed_size=packed_size,

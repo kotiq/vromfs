@@ -60,8 +60,8 @@ class BinContainerInfo(t.NamedTuple):
 class UnpackResult(t.NamedTuple):
     """Результат распаковки."""
 
-    ostream: t.BinaryIO
-    """Выходной поток образа"""
+    stream: t.BinaryIO
+    """Поток образа"""
 
     info: BinContainerInfo
     """Сводка о контейнере"""

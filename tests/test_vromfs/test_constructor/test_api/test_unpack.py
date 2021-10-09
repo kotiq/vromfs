@@ -30,5 +30,5 @@ vrfx_pc_zstd_obfs_bin_container_istream = lazy_fixture('vrfx_pc_zstd_obfs_bin_co
 def test_unpack(unpack, bin_container_istream: t.BinaryIO, unpack_result: UnpackResult, image: bytes):
     result = unpack(bin_container_istream)
     assert result.info == unpack_result.info
-    bs = result.ostream.read()
+    bs = result.stream.read()
     assert bs == image

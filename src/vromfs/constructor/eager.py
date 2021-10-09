@@ -1,9 +1,10 @@
 import hashlib
 import io
+from pathlib import Path
 import typing as t
 import construct as ct
 import zstandard as zstd
-from .error import UnpackError, PackError
+from .error import UnpackError, PackError, DecompressionError
 from .common import PlatformType, BinHeader, BinExtHeader, HeaderType, PackType, UnpackResult, BinContainerInfo
 
 
@@ -17,6 +18,13 @@ obfs_ks: t.Sequence[bytes] = [bytes.fromhex(s) for s in ('55aa55aa', '0ff00ff0',
 
 
 def deobfuscate(bs: bytes) -> bytes:
+    """
+    Восстановление частей сжатого образа.
+
+    :param bs: сжатый образ с измененными частями
+    :return: сжатый образ
+    """
+
     buffer = bytearray(bs)
     sz = len(bs)
     key_sz = sum(map(len, obfs_ks))
@@ -31,18 +39,48 @@ def deobfuscate(bs: bytes) -> bytes:
 
 
 def decompress(bs: bytes, sz: int) -> bytes:
+    """
+    Извлечение образа из архива.
+
+    :param bs: сжатый образ
+    :param sz: размер извлеченного образа
+    :return: образ
+    """
+
     return zstd.decompress(bs, sz)
 
 
 def compress(bs: bytes) -> bytes:
+    """
+    Упаковка образа в архив.
+
+    :param bs: образ
+    :return: сжатый образ
+    """
+
     return zstd.compress(bs)
 
 
 def obfuscate(bs: bytes) -> bytes:
+    """
+    Сокрытие частей сжатого образа.
+
+    :param bs: сжатый образ
+    :return: сжатый образ с измененными частями
+    """
+
     return deobfuscate(bs)
 
 
-def unpack(istream: t.BinaryIO) -> UnpackResult:
+def unpack(istream: t.BinaryIO, decompress_: bool = True) -> UnpackResult:
+    """
+    Распаковка образа из bin контейнера.
+
+    :param istream: входной поток контейнера
+    :param_ decompress_: для сжатого образа: извлечь образ из архива
+    :return: результат распаковки
+    """
+
     try:
         header = BinHeader.parse_stream(istream)
         platform = header.platform
@@ -63,7 +101,13 @@ def unpack(istream: t.BinaryIO) -> UnpackResult:
             packed_size = header.packed.size
             zstd_obfs_image = ct.stream_read(istream, packed_size)
             zstd_image = deobfuscate(zstd_obfs_image)
-            image = decompress(zstd_image, size)
+            if decompress_:
+                try:
+                    image = decompress(zstd_image, size)
+                except zstd.ZstdError as e:
+                    raise DecompressionError from e
+            else:
+                image = zstd_image
 
         ostream = io.BytesIO(image)
 
@@ -81,7 +125,7 @@ def unpack(istream: t.BinaryIO) -> UnpackResult:
         raise UnpackError from e
     else:
         return UnpackResult(
-            ostream=ostream,
+            stream=ostream,
             info=BinContainerInfo(
                 platform=platform,
                 unpacked_size=size,
@@ -94,7 +138,18 @@ def unpack(istream: t.BinaryIO) -> UnpackResult:
 
 def pack(istream: t.BinaryIO, ostream: t.BinaryIO,
          platform: PlatformType, version: t.Tuple[int, int, int, int], compress_: bool, check: bool,
-         tail: bytes):
+         tail: bytes) -> None:
+    """
+    Упаковка образа в bin контейнер.
+
+    :param istream: входной поток образа
+    :param ostream: выходной поток bin контейнера
+    :param platform: целевая платформа
+    :param version: версия образа
+    :param compress_: сжать образ
+    :param check: добавить контрольную сумму
+    :param tail: дополнительные данные
+    """
 
     try:
         image = ct.stream_read_entire(istream)
@@ -135,7 +190,7 @@ def pack(istream: t.BinaryIO, ostream: t.BinaryIO,
             hash_ = hashlib.md5(image).digest()
             ct.Bytes(16).build_stream(hash_, ostream)
         if tail:
-            ct.stream_write(ostream, tail[:0x100])
+            ct.stream_write(ostream, tail, 0x100)
 
     except ct.ConstructError as e:
         raise PackError from e

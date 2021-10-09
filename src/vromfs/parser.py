@@ -154,6 +154,8 @@ class VromfsInfoData:
 VromfsInfo = ct.Struct(
     'names_header' / ct.Aligned(16, NamesDataHeader),  # names_info_offset, names_info_count
     'data_header' / ct.Aligned(16, NamesDataHeader),  # data_info_offset, data_info_count
+
+    # todo: Enlisted/ui/input.vromfs не содержит блока сумм для hash_data_begin=0
     'hash_header' / ct.If(
         this.names_header.offset == 0x30,
         ct.Aligned(16, HashHeader)  # hash_data_end, hash_data_begin
