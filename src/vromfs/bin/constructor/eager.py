@@ -3,7 +3,7 @@ import io
 import typing as t
 import construct as ct
 import zstandard as zstd
-from .error import UnpackError, PackError, DecompressionError
+from .error import BinUnpackError, BinPackError, BinDecompressionError
 from .common import PlatformType, BinHeader, BinExtHeader, HeaderType, PackType, UnpackResult, BinContainerInfo
 
 
@@ -104,7 +104,7 @@ def unpack(istream: t.BinaryIO, decompress_: bool = True) -> UnpackResult:
                 try:
                     image = decompress(zstd_image, size)
                 except zstd.ZstdError as e:
-                    raise DecompressionError from e
+                    raise BinDecompressionError from e
             else:
                 image = zstd_image
 
@@ -118,10 +118,10 @@ def unpack(istream: t.BinaryIO, decompress_: bool = True) -> UnpackResult:
         tail = ct.stream_read_entire(istream)
         tail_sz = len(tail)
         if tail_sz not in (0, 0x100):
-            raise UnpackError("Неожиданный размер остаточных данных: {}".format(tail_sz))
+            raise BinUnpackError("Неожиданный размер остаточных данных: {}".format(tail_sz))
 
     except ct.ConstructError as e:
-        raise UnpackError from e
+        raise BinUnpackError from e
     else:
         return UnpackResult(
             stream=ostream,
@@ -146,7 +146,7 @@ def pack(istream: t.BinaryIO, ostream: t.BinaryIO,
     :param platform: целевая платформа
     :param version: версия образа
     :param compress_: сжать образ
-    :param check: добавить контрольную сумму
+    :param check: добавить дайджест
     :param tail: дополнительные данные
     """
 
@@ -165,7 +165,7 @@ def pack(istream: t.BinaryIO, ostream: t.BinaryIO,
                 packed_type = PackType.ZSTD_OBFS_NOCHECK
         else:
             if not check:
-                raise PackError("Нет типа упаковки для compress_={}, check={}".format(compress_, check))
+                raise BinPackError("Нет типа упаковки для compress_={}, check={}".format(compress_, check))
             # check: 1, compress: 0
             packed_size = 0
             packed_type = PackType.PLAIN
@@ -192,4 +192,4 @@ def pack(istream: t.BinaryIO, ostream: t.BinaryIO,
             ct.stream_write(ostream, tail, 0x100)
 
     except ct.ConstructError as e:
-        raise PackError from e
+        raise BinPackError from e

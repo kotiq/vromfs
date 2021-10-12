@@ -3,7 +3,7 @@
 import logging
 import typing as t
 from pathlib import Path
-from vromfs.bin.constructor.error import UnpackError, DecompressionError
+from vromfs.bin.constructor.error import BinUnpackError, BinDecompressionError
 from vromfs.bin.constructor.eager import unpack
 from helpers import make_outpath
 
@@ -26,12 +26,12 @@ def test_unbin(gamepaths: t.Iterable[Path], binrespath: Path, outpath: Path):
             try:
                 unpack_path(binpath, vromfspath)
                 logging.info(f'[OK] {binpath} => {vromfspath}')
-            except DecompressionError as e:
+            except BinDecompressionError as e:
                 zstd_vromfspath = outpath / rel_vromfspath.with_suffix('.zst.err')
                 unpack_path(binpath, zstd_vromfspath, False)
                 cause = e.__cause__
                 logging.info(f'[FAIL] {binpath}: Ошибка в архиве: {cause}')
                 logging.info(f'[FAIL] {binpath} => {zstd_vromfspath}')
-            except UnpackError as e:
+            except BinUnpackError as e:
                 cause = e.__cause__
                 logging.info(f'[FAIL] {binpath}: {type(cause)} {cause}')

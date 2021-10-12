@@ -1,14 +1,14 @@
-class ConstructError(Exception):
+class BinConstructError(Exception):
     pass
 
 
-class UnpackError(ConstructError):
+class BinUnpackError(BinConstructError):
     pass
 
 
-class DecompressionError(UnpackError):
+class BinDecompressionError(BinUnpackError):
     pass
 
 
-class PackError(ConstructError):
+class BinPackError(BinConstructError):
     pass

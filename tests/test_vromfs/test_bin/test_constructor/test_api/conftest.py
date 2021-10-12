@@ -19,8 +19,8 @@ def vrfs_pc_plain_unpack_result(image: bytes, hash_: bytes) -> UnpackResult:
 
 
 @pytest.fixture(scope='module')
-def vrfx_pc_zstd_obfs_unpack_result(image: bytes, obfuscated_compressed_image: bytes, version: t.Tuple[int, int, int, int],
-                                 hash_: bytes) -> UnpackResult:
+def vrfx_pc_zstd_obfs_unpack_result(image: bytes, obfuscated_compressed_image: bytes,
+                                    version: t.Tuple[int, int, int, int], hash_: bytes) -> UnpackResult:
     return UnpackResult(
         stream=io.BytesIO(image),
         info=BinContainerInfo(
@@ -31,4 +31,3 @@ def vrfx_pc_zstd_obfs_unpack_result(image: bytes, obfuscated_compressed_image: b
             platform=PlatformType.PC
         )
     )
-

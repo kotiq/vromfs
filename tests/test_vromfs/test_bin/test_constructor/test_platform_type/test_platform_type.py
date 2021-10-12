@@ -2,7 +2,7 @@ import io
 import typing as t
 import pytest
 from vromfs.bin.constructor import PlatformType, PlatformTypeCon
-from test_vromfs.test_bin.test_constructor import _test_parse, _test_build
+from test_vromfs import _test_parse, _test_build
 
 
 @pytest.mark.parametrize(['platform_type_istream', 'platform_type_bs', 'platform_type'], [

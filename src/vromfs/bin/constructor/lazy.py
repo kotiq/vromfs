@@ -3,7 +3,7 @@ import typing as t
 import construct as ct
 import zstandard as zstd
 from vromfs.reader import RangedReader
-from .error import UnpackError
+from .error import BinUnpackError
 from .common import BinHeader, HeaderType, BinExtHeader, PackType, UnpackResult, BinContainerInfo
 
 BinContainer = ct.Struct(
@@ -74,12 +74,12 @@ def unpack(istream: t.BinaryIO) -> UnpackResult:
     try:
         bin_container = BinContainer.parse_stream(istream)
     except ct.ConstructError as e:
-        raise UnpackError from e
+        raise BinUnpackError from e
     else:
         pack_type: PackType = bin_container.header.packed.type
 
         if pack_type not in (PackType.PLAIN, PackType.ZSTD_OBFS, pack_type.ZSTD_OBFS_NOCHECK):
-            raise UnpackError("Unknown pack_type: {}".format(pack_type))
+            raise BinUnpackError("Unknown pack_type: {}".format(pack_type))
 
         offset = bin_container.offset
         size = bin_container.header.size

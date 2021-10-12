@@ -148,8 +148,3 @@ def vrfx_pc_zstd_obfs_bin_container_istream(vrfx_pc_zstd_obfs_bin_container_bs: 
 @pytest.fixture(scope='function')
 def vrfs_pc_zstd_obfs_nocheck_bin_container_istream(vrfs_pc_zstd_obfs_nocheck_bin_container_bs: bytes) -> io.BytesIO:
     return io.BytesIO(vrfs_pc_zstd_obfs_nocheck_bin_container_bs)
-
-
-@pytest.fixture()
-def ostream():
-    return io.BytesIO()

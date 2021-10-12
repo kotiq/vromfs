@@ -1,6 +1,6 @@
 import typing as t
 from vromfs.bin.constructor import BinExtHeader
-from test_vromfs.test_bin.test_constructor import _test_parse, _test_build
+from test_vromfs import _test_parse, _test_build
 
 
 def test_bin_ext_header_parse(ext_header_istream: t.BinaryIO, ext_header_bs: bytes, ext_header: dict):

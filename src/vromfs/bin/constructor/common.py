@@ -1,11 +1,6 @@
-import hashlib
-import io
 from enum import Enum
-from pathlib import Path
 import typing as t
 import construct as ct
-import zstandard as zstd
-from construct import this
 
 T = t.TypeVar('T')
 VT = t.Union[T, t.Callable[[ct.Container], T]]
