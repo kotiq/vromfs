@@ -1,1 +1,1 @@
-from .common import Name
+from .common import Name, NamesData

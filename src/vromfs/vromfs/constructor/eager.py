@@ -5,7 +5,7 @@ from pathlib import Path
 import typing as t
 import construct as ct
 from construct import this
-from .common import Name, getvalue, VT
+from .common import Name, NamesData
 from .error import VromfsUnpackError, VromfsPackError
 
 
@@ -23,7 +23,8 @@ Image = ct.Struct(
         'begin' / ct.Int16ul,
     ))),
     'names_info' / ct.Aligned(16, ct.Int64ul[this.names_header.count]),
-    'names_data' / ct.Aligned(16, Name[this.names_header.count]),
+    'names_data' / ct.Aligned(16, NamesData(this.names_info)),
+
     'data_info' / ct.Aligned(16, ct.Aligned(16, ct.Struct(
         'offset' / ct.Int32ul,
         'size' / ct.Int32ul,
@@ -105,11 +106,8 @@ def pack(path: Path, ostream: t.BinaryIO, add_header: bool = False, check: bool 
 
         ct.stream_seek(ostream, names_data_offset)
         offsets = []
-        for rp in rpaths:
-            offsets.append(ct.stream_tell(ostream))
-            Name.build_stream(rp, ostream)
-        pad = -ct.stream_tell(ostream) % 16
-        ct.stream_seek(ostream, pad, io.SEEK_CUR)
+        names_data_con = ct.Aligned(16, NamesData(offsets))
+        names_data_con.build_stream(rpaths, ostream)
         data_info_offset = ct.stream_tell(ostream)
 
         ct.stream_seek(ostream, data_header_offset)

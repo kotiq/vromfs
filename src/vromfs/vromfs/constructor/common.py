@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import typing as t
 import construct as ct
+from construct import this
 
 T = t.TypeVar('T')
 VT = t.Union[T, t.Callable[[ct.Container], T]]
@@ -38,3 +39,46 @@ class NameAdapter(ct.Adapter):
 
 
 Name = NameAdapter(RawCString)
+
+
+class NamesData(ct.Construct):
+    def __init__(self, offsets: VT[t.Union[t.Sequence[int], t.MutableSequence[int]]]):
+        super().__init__()
+        self.offsets = offsets
+
+    def _parse(self, stream: t.BinaryIO, context: ct.Container, path: str) -> t.Sequence[Path]:
+        offsets: t.Sequence[int] = getvalue(self.offsets, context)
+        if not offsets:
+            raise ct.CheckError('Ожидалась непустая последовательность смещений.')
+
+        names = []
+        max_end_offset = 0
+        for offset in offsets:
+            ct.stream_seek(stream, offset)
+            name = Name._parsereport(stream, context, path)
+            end_offset = ct.stream_tell(stream)
+            max_end_offset = max(end_offset, max_end_offset)
+            names.append(name)
+        ct.stream_seek(stream, max_end_offset)
+        return names
+
+    def _build(self, obj: t.Sequence[Path], stream: ct.Container, context: ct.Container, path: str
+               ) -> t.Sequence[Path]:
+        if not obj:
+            raise ct.CheckError('Ожидалась непустая последовательность имен.')
+
+        offsets: t.MutableSequence[int] = getvalue(self.offsets, context)
+        offsets.clear()
+
+        for name in obj:
+            offset = ct.stream_tell(stream)
+            offsets.append(offset)
+            Name._build(name, stream, context, path)
+
+        return obj
+
+
+Names = ct.Struct(
+    'names_info' / ct.Aligned(16, ct.Int64ul[this.count]),
+    'names_data' / ct.Aligned(16, NamesData(this.names_info)),
+)

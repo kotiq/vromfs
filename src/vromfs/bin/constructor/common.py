@@ -53,13 +53,13 @@ class BinContainerInfo(t.NamedTuple):
 
 
 class UnpackResult(t.NamedTuple):
-    """Результат распаковки."""
+    """Результат распаковки контейнера."""
 
     stream: t.BinaryIO
-    """Поток образа"""
+    """Поток образа."""
 
     info: BinContainerInfo
-    """Сводка о контейнере"""
+    """Сводка о контейнере."""
 
 
 def not_implemented(obj: t.Any, context: ct.Container) -> t.NoReturn:
