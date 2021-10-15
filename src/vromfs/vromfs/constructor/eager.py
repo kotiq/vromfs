@@ -5,8 +5,8 @@ from pathlib import Path
 import typing as t
 import construct as ct
 from construct import this
-from .common import Name, NamesData
-from .error import VromfsUnpackError, VromfsPackError
+from .common import File, NamesData
+from .error import VromfsPackError, VromfsUnpackError
 
 
 Image = ct.Struct(
@@ -35,12 +35,6 @@ Image = ct.Struct(
 )
 
 
-class File(t.NamedTuple):
-    path: Path
-    data: bytes
-    hash: t.Optional[bytes]
-
-
 def unpack(istream: t.BinaryIO) -> t.Sequence[File]:
     """
     Распаковка образа.
@@ -54,7 +48,7 @@ def unpack(istream: t.BinaryIO) -> t.Sequence[File]:
         paths = image.names_data
         contents = image.data
         hashes = image.hashes_data if image.hashes_data else itt.repeat(None)
-        return [File(p, d, h) for p, d, h in zip(paths, contents, hashes)]
+        return [File(p, io.BytesIO(d), len(d), h) for p, d, h in zip(paths, contents, hashes)]
     except ct.ConstructError as e:
         raise VromfsUnpackError from e
 

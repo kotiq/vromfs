@@ -1,29 +1,10 @@
-import hashlib
-import io
 import itertools as itt
-from pathlib import Path
 import typing as t
 import construct as ct
 from construct import this
-from .common import NamesData
-from .error import VromfsUnpackError, VromfsPackError
-
-
-class FileInfo(t.NamedTuple):
-    path: Path
-    offset: int
-    size: int
-    hash: t.Optional[bytes]
-
-
-class UnpackResult(t.NamedTuple):
-    """Результат распаковки образа."""
-
-    stream: t.BinaryIO
-    """Поток образа."""
-
-    files_info: t.Sequence[FileInfo]
-    """Сводка о файлах."""
+from vromfs.reader import RangedReader
+from .common import File, NamesData
+from .error import VromfsUnpackError
 
 
 Image = ct.Struct(
@@ -62,7 +43,7 @@ Image = ct.Struct(
 )
 
 
-def unpack(istream: t.BinaryIO) -> UnpackResult:
+def unpack(istream: t.BinaryIO) -> t.Sequence[File]:
     """
     Распаковка образа.
 
@@ -77,7 +58,6 @@ def unpack(istream: t.BinaryIO) -> UnpackResult:
         data_info = image.data_info
         offsets = [di['offset'] for di in data_info]
         sizes = [di['size'] for di in data_info]
-        files_info = [FileInfo(p, o, s, h) for p, o, s, h in zip(paths, offsets, sizes, hashes)]
-        return UnpackResult(istream, files_info)
+        return [File(p, RangedReader(istream, o, o + s), s, h) for p, o, s, h in zip(paths, offsets, sizes, hashes)]
     except ct.ConstructError as e:
         raise VromfsUnpackError from e

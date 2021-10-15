@@ -82,3 +82,31 @@ Names = ct.Struct(
     'names_info' / ct.Aligned(16, ct.Int64ul[this.count]),
     'names_data' / ct.Aligned(16, NamesData(this.names_info)),
 )
+
+
+class File(t.NamedTuple):
+    path: Path
+    """Относительный путь."""
+
+    stream: t.BinaryIO
+    """Источник данных."""
+
+    size: int
+    """Размер данных в байтах."""
+
+    hash: t.Optional[bytes]
+    """Хеш данных."""
+
+    def __eq__(self, other):
+        if self is other:
+            return True
+        if not isinstance(other, File):
+            return False
+        if not self.path == other.path and self.size == other.size and self.hash == other.hash:
+            return False
+
+
+
+        xs = self.stream.read()
+        ys = other.stream.read()
+        return (len(xs) == len(ys) == self.size) and (xs == ys)

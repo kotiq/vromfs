@@ -4,7 +4,7 @@ import itertools as itt
 from pathlib import Path
 import typing as t
 import pytest
-from vromfs.vromfs.constructor.eager import File
+from vromfs.vromfs.constructor import File
 
 
 def hash_(bs: bytes) -> bytes:
@@ -94,18 +94,18 @@ def image_without_hashes_istream(image_without_hashes_bs: bytes):
     return io.BytesIO(image_without_hashes_bs)
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope='function')
 def image_with_hashes_files(paths: t.Sequence[Path], contents: t.Sequence[bytes], hashes: t.Sequence[bytes]):
-    return [File(p, d, h) for p, d, h in zip(paths, contents, hashes)]
+    return [File(p, io.BytesIO(d), len(d), h) for p, d, h in zip(paths, contents, hashes)]
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope='function')
 def image_with_hash_header_null_begin_files(paths: t.Sequence[Path], contents: t.Sequence[bytes]):
     hashes = itt.repeat(None)
-    return [File(p, d, h) for p, d, h in zip(paths, contents, hashes)]
+    return [File(p, io.BytesIO(d), len(d), h) for p, d, h in zip(paths, contents, hashes)]
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope='function')
 def image_without_hashes_files(paths: t.Sequence[Path], contents: t.Sequence[bytes]):
     hashes = itt.repeat(None)
-    return [File(p, d, h) for p, d, h in zip(paths, contents, hashes)]
+    return [File(p, io.BytesIO(d), len(d), h) for p, d, h in zip(paths, contents, hashes)]
