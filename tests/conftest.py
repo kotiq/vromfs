@@ -46,3 +46,9 @@ def cdkpath(pytestconfig):
 @pytest.fixture(scope='session')
 def gamepaths(pytestconfig):
     return tuple(map(Path, pytestconfig.getini('gamepaths')))
+
+
+@pytest.fixture(scope='session')
+def imagespath(binrespath: Path):
+    return binrespath / 'images'
+
