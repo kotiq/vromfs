@@ -2,6 +2,7 @@ from datetime import datetime
 import logging
 from pathlib import Path
 import pytest
+from pytest_lazyfixture import lazy_fixture
 
 
 def _outdir_rpath(name):
@@ -33,7 +34,7 @@ def create_text(path):
 def make_logger(name):
     @pytest.fixture(scope='module')
     def logger(outpath: Path):
-        formatter = logging.Formatter('%(asctime)s %(message)s')
+        formatter = logging.Formatter('%(created)s %(levelname)s %(message)s')
         logger_ = logging.getLogger(name)
         logger_.level = logging.INFO
 
@@ -45,3 +46,20 @@ def make_logger(name):
         return logger_
 
     return logger
+
+
+def make_source(name, ctor, scope='function'):
+    @pytest.fixture(scope=scope)
+    def source(binrespath: Path):
+        path = binrespath / name
+        return ctor(path)
+
+    return source
+
+
+def fixtures_group(*names, scope='function'):
+    @pytest.fixture(params=lazy_fixture(names), scope=scope)
+    def group(request):
+        return request.param
+
+    return group

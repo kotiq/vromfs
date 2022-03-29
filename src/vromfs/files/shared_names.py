@@ -1,14 +1,15 @@
-import io
 from collections import OrderedDict
 from pathlib import Path
 import typing as t
 import construct as ct
-from construct import len_, this
+from construct import this
 import zstandard as zstd
 from blk.types import Name, Str
-from vromfs.parser import getvalue, VT
 from blk.binary.constructor import Names
 from .errors import *
+
+T = t.TypeVar('T')
+VT = t.Union[T, t.Callable[[ct.Container], T]]
 
 
 def not_implemented(obj: t.Any, context: ct.Container) -> t.NoReturn:
@@ -28,12 +29,12 @@ class ZstdCompressed(ct.Tunnel):
         self.max_output_size = max_output_size
 
     def _decode(self, data: bytes, context: ct.Container, path: str):
-        dctx = getvalue(self.dctx, context)
-        max_output_size = getvalue(self.max_output_size, context)
+        dctx = ct.evaluate(self.dctx, context)
+        max_output_size = ct.evaluate(self.max_output_size, context)
         return dctx.decompress(data, max_output_size=max_output_size)
 
     def _encode(self, data: bytes, context: ct.Container, path: str) -> bytes:
-        cctx = getvalue(self.cctx, context)
+        cctx = ct.evaluate(self.cctx, context)
         return cctx.compress(data)
 
 

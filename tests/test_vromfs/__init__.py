@@ -2,15 +2,15 @@ import typing as t
 import construct as ct
 
 
-def _test_parse(con: ct.Construct, istream: t.BinaryIO, bs: bytes, expected: t.Any):
+def check_parse(con: ct.Construct, istream: t.BinaryIO, bytes_len: int, expected_value: t.Any):
     parsed = con.parse_stream(istream)
-    assert istream.tell() == len(bs)
-    assert parsed == expected
+    assert istream.tell() == bytes_len
+    assert parsed == expected_value
 
 
-def _test_build(con: ct.Construct, value: t.Any, expected_bs: bytes, ostream: t.BinaryIO):
+def check_build(con: ct.Construct, value: t.Any, expected_bytes: bytes, ostream: t.BinaryIO):
     con.build_stream(value, ostream)
-    assert ostream.tell() == len(expected_bs)
+    assert ostream.tell() == len(expected_bytes)
     ostream.seek(0)
     built_bs = ostream.read()
-    assert built_bs == expected_bs
+    assert built_bs == expected_bytes

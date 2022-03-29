@@ -18,13 +18,15 @@ def pytest_addoption(parser):
         'name': 'cdkpath',
         'help': 'Директория WarThunderCDK.'
     }
-    gamepath = {
-        'name': 'gamepaths',
-        'type': 'pathlist',
-        'help': 'Директории WarThunder, Enlisted'
+    wtpath = {
+        'name': 'wtpath',
+        'help': 'Директория WarThunder.'
     }
-
-    for m in binrespath, buildpath, cdkpath, gamepath:
+    enpath = {
+        'name': 'enpath',
+        'help': 'Директория Enlisted.'
+    }
+    for m in binrespath, buildpath, cdkpath, wtpath, enpath:
         parser.addini(**m)
 
 
@@ -44,11 +46,15 @@ def cdkpath(pytestconfig):
 
 
 @pytest.fixture(scope='session')
-def gamepaths(pytestconfig):
-    return tuple(map(Path, pytestconfig.getini('gamepaths')))
+def wtpath(pytestconfig):
+    return Path(pytestconfig.getini('wtpath'))
+
+
+@pytest.fixture(scope='session')
+def enpath(pytestconfig):
+    return Path(pytestconfig.getini('enpath'))
 
 
 @pytest.fixture(scope='session')
 def imagespath(binrespath: Path):
     return binrespath / 'images'
-
