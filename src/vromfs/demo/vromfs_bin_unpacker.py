@@ -36,13 +36,15 @@ class ArgsNS(t.NamedTuple):
 def get_args() -> ArgsNS:
     parser = argparse.ArgumentParser(description='Распаковщик vromfs bin контейнера.')
     parser.add_argument('--format', dest='out_format', choices=tuple(OutType),
-                        type=lambda s: OutType[s.upper()], default=OutType.JSON, help='Формат блоков.')
+                        type=lambda s: OutType[s.upper()], default=OutType.JSON,
+                        help='Формат блоков. По умолчанию %(default)s.')
     parser.add_argument('--sort', dest='is_sorted', action='store_true', default=False,
                         help='Сортировать ключи для JSON*.')
     parser.add_argument('--metadata', dest='dump_files_info', action='store_true', default=False,
                         help='Сводка о файлах: имя => SHA1 дайджест.')
     parser.add_argument('--input_filelist', dest='maybe_in_files', type=argparse.FileType(), default=None,
-                        help='Файл со списком файлов в формате JSON.')
+                        help=('Файл со списком файлов в формате JSON. '
+                              '"-" - читать из stdin.'))
     parser.add_argument('-o', '--output', dest='maybe_out_path', type=Path, default=None,
                         help=('Выходной файл для сводки о файлах или родитель выходной директории для распаковки. '
                               'Если output не указан, вывод сводки о файлах в stdout, выходная директория '
@@ -110,6 +112,7 @@ def main():
 
         failed = successful = 0
         try:
+            logger.info('Начало распаковки.')
             for result in vromfs.unpack_gen(out_path, maybe_paths, args_ns.out_format, args_ns.is_sorted):
                 if result.error is not None:
                     failed += 1
@@ -117,7 +120,7 @@ def main():
                 else:
                     successful += 1
 
-            logger.info(f'Успешно распаковано: {successful}/{successful+failed}.')
+            logger.info('Успешно распаковано: {}/{}.'.format(successful, successful+failed))
             if failed:
                 logger.error('Ошибка при обработке файлов.')
                 return 1

@@ -27,8 +27,6 @@ __all__ = [
     'OutType',
 ]
 
-print(__name__)
-
 logger = logging.getLogger(__name__)
 Item = t.Union[os.PathLike, FileInfo]
 
