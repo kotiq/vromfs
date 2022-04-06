@@ -434,6 +434,7 @@ class VromfsFile:
             with create_text(tmp) as ostream:
                 try:
                     self._unpack_info_into_blk(item, ostream, out_type, is_sorted)
+                    ostream.close()
                     tmp.replace(target)
                 except Exception:
                     raise
@@ -442,6 +443,7 @@ class VromfsFile:
                 try:
                     self._unpack_info_into_raw(item, ostream)
                     logger.debug(f'{str(item.path)!r}')
+                    ostream.close()
                     tmp.replace(target)
                 except Exception:
                     raise
