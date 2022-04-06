@@ -31,6 +31,7 @@ class ArgsNS(t.NamedTuple):
     maybe_out_path: t.Optional[Path]
     input: t.BinaryIO
     maybe_in_files: t.Optional[t.TextIO]
+    exit_first: bool
 
 
 def get_args() -> ArgsNS:
@@ -45,6 +46,8 @@ def get_args() -> ArgsNS:
     parser.add_argument('--input_filelist', dest='maybe_in_files', type=argparse.FileType(), default=None,
                         help=('Файл со списком файлов в формате JSON. '
                               '"-" - читать из stdin.'))
+    parser.add_argument('-x', '--exitfirst', dest='exit_first', action='store_true', default=False,
+                        help='Закончить распаковку при первой ошибке.')
     parser.add_argument('-o', '--output', dest='maybe_out_path', type=Path, default=None,
                         help=('Выходной файл для сводки о файлах или родитель выходной директории для распаковки. '
                               'Если output не указан, вывод сводки о файлах в stdout, выходная директория '
@@ -117,6 +120,8 @@ def main():
                 if result.error is not None:
                     failed += 1
                     logger.error(f'[FAIL] {args_ns.input.name!r}::{str(result.path)!r}: {result.error}')
+                    if args_ns.exit_first:
+                        break
                 else:
                     successful += 1
 

@@ -72,6 +72,7 @@ python -m json.tool
 vromfs_bin_unpacker [--format {RAW,STRICT_BLK,JSON,JSON_2,JSON_3}]
                     [--sort]
                     [--input_filelist MAYBE_IN_FILES]
+                    [-x]
                     [-o MAYBE_OUT_PATH]
                     input
 ```
@@ -82,6 +83,7 @@ vromfs_bin_unpacker [--format {RAW,STRICT_BLK,JSON,JSON_2,JSON_3}]
 - `--sort` Сортировать ключи для форматов `json`, `json_2`, `json_3`.
 - `--input_filelist` Файл с JSON списком файлов, `-` для чтения из `stdin`. Если не указан, распаковать все файлы из 
 образа.
+- `-x, --exitfirst` Закончить распаковку при первой ошибке.
 - `-o, --output` Родитель для выходной директории, выходная директория - имя контейнера. Если не указан, `cwd`, 
 выходная директория - имя контейнера с постфиксом `_u`.
 - `input` Файл .vromfs.bin контейнера.
