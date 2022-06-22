@@ -1,7 +1,5 @@
 # Инструмент для работы с файлами контейнеров и образов VROMFS.
 
-> :warning: Функции упаковки образов и контейнеров приведены только для создания тестовых данных.
-
 ## Среда выполнения
 
 Linux, Python 3.7. Распаковщик однопоточный, рекомендую PyPy 7.3.8.
@@ -24,7 +22,8 @@ pip install .
 ### Получение сводки о файлах в образе
 
 ```shell
-vromfs_bin_unpacker --metadata
+vromfs_bin_unpacker [-h]
+                    --metadata
                     [--input_filelist MAYBE_IN_FILES]
                     [-o MAYBE_OUT_PATH]
                     input
@@ -32,6 +31,7 @@ vromfs_bin_unpacker --metadata
 
 Аргументы:
 
+- `-h, --help` Показать справку.
 - `--metadata` Режим получения сводки о файлах.
 - `--input_filelist` Файл с JSON списком файлов, `-` для чтения из `stdin`. Если не указан, запросить сводку для всех 
 файлов из образа.
@@ -95,10 +95,7 @@ vromfs_bin_unpacker [--format {RAW,STRICT_BLK,JSON,JSON_2,JSON_3}]
 echo '["config/wpcost.blk", "version", "nop"]' |\
 vromfs_bin_unpacker --input_filelist - -o /tmp --format strict_blk ~/games/WarThunder/char.vromfs.bin
 ```
-
-Вывод:
-
-```
+```text
 1649101539.0282645 INFO Начало распаковки.
 1649101539.0303192 ERROR [FAIL] '/home/kotiq/games/WarThunder/char.vromfs.bin'::'nop': "Нет FileInfo, содержащего путь 'nop'"
 1649101550.4968865 DEBUG 'config/wpcost.blk': SLIM_ZST => STRICT_BLK
@@ -109,10 +106,77 @@ vromfs_bin_unpacker --input_filelist - -o /tmp --format strict_blk ~/games/WarTh
 
 Дерево файлов:
 
-```
+```shell
 $ tree -s --metafirst /tmp/char.vromfs.bin
+```
+```text
 [         80]  /tmp/char.vromfs.bin
 [         60]  ├── config
 [   13003236]  │   └── wpcost.blk
 [          9]  └── version
+```
+
+## Упаковка файлов
+
+Пример упаковщика `src/vromfs/demo/vromfs_bin_packer.py`.
+
+Упаковщик приведен, главным образом, как генератор тестовых данных. 
+Предполагается, что для файлов blk перевод в двоичный формат произведен заранее, если это необходимо.
+
+```shell
+ vromfs_bin_packer [-h]
+                   -v VERSION 
+                   [-o OUT_PATH] 
+                   in_path
+```
+
+Аргументы:
+
+- `-h, --help` Показать справку.
+- `-v, --ver` Версия архива x.y.z.w, где x, y, z, w из 0 .. 255. 
+- `-o, --output` Выходной файл. По умолчанию `./out.vromfs.bin`. 
+- `in_path` Директория для упаковки.
+
+В контейнер попадают файлы, перечисленные в директории, но не сама директория. 
+
+Пример упаковки файлов из директории `/tmp/files` в архив `/tmp/out.vromfs.bin` версии `1.2.3.4`.
+
+Дерево файлов:
+
+```shell
+tree -s --metafirst /tmp/files
+```
+```text
+[         80]  /tmp/files
+[         60]  ├── inner
+[       1061]  │   └── fstab
+[        106]  └── lsb-release
+```
+
+Формирование архива:
+
+```shell
+vromfs_bin_packer.py -v 1.2.3.4 -o /tmp/out.vromfs.bin /tmp/files
+```
+```text
+1655019014.6393943 DEBUG /tmp/files => temp vromfs
+1655019014.6394637 DEBUG Размер временного образа: 1296
+1655019014.640162 DEBUG temp vromfs => /tmp/out.vromfs.bin
+1655019014.640218 INFO /tmp/files => /tmp/out.vromfs.bin
+```
+
+Содержимое архива:
+
+```shell
+vromfs_bin_unpacker.py --metadata /tmp/out.vromfs.bin |\
+python -m json.tool
+```
+```json
+{
+    "version": "1.1",
+    "filelist": {
+        "inner/fstab": "a0940cb3f3298ae0cb9ba0a30e05e678e7f8c6f2",
+        "lsb-release": "792f608be04167807db067707a31a656aa687d0f"
+    }
+}
 ```
