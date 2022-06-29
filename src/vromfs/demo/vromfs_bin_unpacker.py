@@ -1,13 +1,23 @@
-import argparse
+from argparse import Action, ArgumentParser, FileType, Namespace
 import json
 import logging
 from pathlib import Path
 import sys
-import typing as t
+from typing import BinaryIO, Iterable, NamedTuple, Optional, TextIO
+from blk import Format
 from vromfs.bin import BinFile
-from vromfs.vromfs import OutType, VromfsFile
+from vromfs.vromfs import VromfsFile
 
 FILES_INFO_VERSION = '1.1'
+FORMATS = set(Format) - {Format.JSON_MIN}
+
+
+def iname(f: Format) -> str:
+    return f.name.lower()
+
+
+def format_(s: str) -> Format:
+    return Format[s.upper()]
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -24,26 +34,33 @@ def get_logger(name: str) -> logging.Logger:
 logger = get_logger('vromfs')
 
 
-class ArgsNS(t.NamedTuple):
-    out_format: OutType
+class ArgsNS(NamedTuple):
+    out_format: Format
     is_sorted: bool
     dump_files_info: bool
-    maybe_out_path: t.Optional[Path]
-    input: t.BinaryIO
-    maybe_in_files: t.Optional[t.TextIO]
+    maybe_out_path: Optional[Path]
+    input: BinaryIO
+    maybe_in_files: Optional[TextIO]
     exit_first: bool
 
 
+class CreateFormat(Action):
+    def __call__(self, parser: ArgumentParser, namespace: Namespace,
+                 values: str, option_string=None) -> None:
+        f = format_(values)
+        setattr(namespace, self.dest, f)
+
+
 def get_args() -> ArgsNS:
-    parser = argparse.ArgumentParser(description='Распаковщик vromfs bin контейнера.')
-    parser.add_argument('--format', dest='out_format', choices=tuple(OutType),
-                        type=lambda s: OutType[s.upper()], default=OutType.JSON,
+    parser = ArgumentParser(description='Распаковщик vromfs bin контейнера.')
+    parser.add_argument('--format', dest='out_format', choices=sorted(map(iname, FORMATS)),
+                        action=CreateFormat, default=iname(Format.JSON),
                         help='Формат блоков. По умолчанию %(default)s.')
     parser.add_argument('--sort', dest='is_sorted', action='store_true', default=False,
                         help='Сортировать ключи для JSON*.')
     parser.add_argument('--metadata', dest='dump_files_info', action='store_true', default=False,
                         help='Сводка о файлах: имя => SHA1 дайджест.')
-    parser.add_argument('--input_filelist', dest='maybe_in_files', type=argparse.FileType(), default=None,
+    parser.add_argument('--input_filelist', dest='maybe_in_files', type=FileType(), default=None,
                         help=('Файл со списком файлов в формате JSON. '
                               '"-" - читать из stdin.'))
     parser.add_argument('-x', '--exitfirst', dest='exit_first', action='store_true', default=False,
@@ -53,13 +70,13 @@ def get_args() -> ArgsNS:
                               'Если output не указан, вывод сводки о файлах в stdout, выходная директория '
                               'для распаковки - имя контейнера с постфиксом _u.')
                         )
-    parser.add_argument(dest='input', type=argparse.FileType('rb'), help='Контейнер.')
+    parser.add_argument(dest='input', type=FileType('rb'), help='Контейнер.')
     args_ns = parser.parse_args()
     return ArgsNS(**args_ns.__dict__)
 
 
 def dump_files_info(vromfs: VromfsFile,
-                    paths: t.Optional[t.Iterable[Path]] = None, ostream: t.Optional[t.TextIO] = None):
+                    paths: Optional[Iterable[Path]] = None, ostream: Optional[TextIO] = None):
     if ostream is None:
         ostream = sys.stdout
 

@@ -1,54 +1,40 @@
 from collections import OrderedDict
-import enum
-import hashlib
-import io
-import itertools as itt
+from enum import Enum
+from hashlib import sha1
+from io import BytesIO, IOBase, SEEK_END
+from itertools import repeat
 import logging
 import os
 from pathlib import Path
-import typing as t
+from typing import (BinaryIO, Generator, Iterable, Mapping, MutableSequence, NamedTuple, Optional, OrderedDict as ODict,
+                    Sequence, TextIO, Union)
 import construct as ct
 from construct import this
-import zstandard as zstd
+from zstandard import DICT_TYPE_AUTO, FORMAT_ZSTD1, ZstdCompressionDict, ZstdDecompressor, ZstdError
 import blk.text as txt
 import blk.json as jsn
-from blk import Section
-from blk.text import STRICT_BLK
-from blk.json import JSON, JSON_2, JSON_3
+from blk import Format, Section
 from blk.binary import compose_names_data, compose_fat_data, compose_slim_data, compose_bbf, compose_bbf_zlib
 from vromfs.common import file_apply
 from vromfs.ranged_reader import RangedReader
-from .common import *
-from .error import *
+from .common import FileInfo, NamesData
+from .error import VromfsPackError, VromfsUnpackError
 
 __all__ = [
     'Image',
     'VromfsFile',
-    'OutType',
 ]
 
 logger = logging.getLogger(__name__)
-Item = t.Union[os.PathLike, FileInfo]
+Item = Union[os.PathLike, FileInfo]
 
 
-class ExtractResult(t.NamedTuple):
+class ExtractResult(NamedTuple):
     path: Path
-    error: t.Optional[Exception]
+    error: Optional[Exception]
 
 
-# todo: перенести в blk
-class OutType(enum.IntEnum):
-    RAW = -1
-    STRICT_BLK = STRICT_BLK
-    JSON = JSON
-    JSON_2 = JSON_2
-    JSON_3 = JSON_3
-
-    def __str__(self):
-        return self.name
-
-
-class BlkType(enum.Enum):
+class BlkType(Enum):
     BBF = 'bbf'
     BBZ = 'bbz'
     FAT = 'fat'
@@ -117,19 +103,19 @@ Image = ct.Struct(
 )
 
 
-def serialize_text(root: Section, ostream: t.TextIO, out_type: int, is_sorted: bool):
-    if out_type == txt.STRICT_BLK:
+def serialize_text(root: Section, ostream: TextIO, out_format: Format, is_sorted: bool) -> None:
+    if out_format is Format.STRICT_BLK:
         txt.serialize(root, ostream, dialect=txt.StrictDialect)
-    elif out_type in (jsn.JSON, jsn.JSON_2, jsn.JSON_3):
-        jsn.serialize(root, ostream, out_type, is_sorted)
+    elif out_format in (Format.JSON, Format.JSON_2, Format.JSON_3):
+        jsn.serialize(root, ostream, out_format, is_sorted)
 
 
-def is_text(bs: t.Iterable[bytes]) -> bool:
+def is_text(bs: Iterable[bytes]) -> bool:
     restricted = bytes.fromhex('00 01 02 03 04 05 06 07 08 0b 0c 0e 0f 10 11 12 14 13 15 16 17 18 19')
     return not any(b in restricted for b in bs)
 
 
-def create_text(path: os.PathLike) -> t.TextIO:
+def create_text(path: os.PathLike) -> TextIO:
     return open(path, 'w', newline='', encoding='utf8')
 
 
@@ -138,7 +124,7 @@ class VromfsFile:
     Класс для работы с VROMFS образом.
     """
 
-    def __init__(self, source: t.Union[os.PathLike, io.IOBase]):
+    def __init__(self, source: Union[os.PathLike, IOBase]):
         """
         :param source: Входной файл или путь к файлу образа.
         :raises TypeError: Неверный тип source.
@@ -149,7 +135,7 @@ class VromfsFile:
             self._vromfs_stream = open(source, 'rb')
             self._owner = True
             self._name = os.fspath(source)
-        elif isinstance(source, io.IOBase) and source.readable():
+        elif isinstance(source, IOBase) and source.readable():
             self._vromfs_stream = source
             self._owner = False
             maybe_name = getattr(source, 'name', None)
@@ -170,7 +156,7 @@ class VromfsFile:
             self._vromfs_stream.close()
 
     @property
-    def name(self) -> t.Optional[str]:
+    def name(self) -> Optional[str]:
         """
         Имя файла. None, если объект на основе потока.
         """
@@ -215,7 +201,7 @@ class VromfsFile:
         return self.meta.names_header.offset == 0x30
 
     @property
-    def info_map(self) -> t.OrderedDict[Path, FileInfo]:
+    def info_map(self) -> ODict[Path, FileInfo]:
         """
         Упорядоченное отображение ``{внутренний путь файла => метаданные файла}``
         в порядке возрастания смещений файлов.
@@ -226,7 +212,7 @@ class VromfsFile:
         if self._info_map is None:
             meta = self.meta
             paths = meta.names_data
-            digests = meta.digests_data if meta.digests_data else itt.repeat(None)
+            digests = meta.digests_data if meta.digests_data else repeat(None)
             data_info = meta.data_info
             offsets = [di['offset'] for di in data_info]
             sizes = [di['size'] for di in data_info]
@@ -260,7 +246,7 @@ class VromfsFile:
         return info
 
     @property
-    def name_list(self) -> t.Sequence[Path]:
+    def name_list(self) -> Sequence[Path]:
         """
         Последовательность внутренних имен файлов в образе VROMFS в порядке возрастания смещений файлов.
 
@@ -270,7 +256,7 @@ class VromfsFile:
         return tuple(self.info_map.keys())
 
     @property
-    def info_list(self) -> t.Sequence[FileInfo]:
+    def info_list(self) -> Sequence[FileInfo]:
         """
         Последовательность метаданных файлов в образе VROMFS в порядке возрастания смещений файлов.
 
@@ -280,7 +266,7 @@ class VromfsFile:
         return tuple(self.info_map.values())
 
     @property
-    def nm(self) -> t.Optional[t.Sequence[str]]:
+    def nm(self) -> Optional[Sequence[str]]:
         """
         Общая таблица имен. None, если образ не содержит таблицы.
 
@@ -298,13 +284,13 @@ class VromfsFile:
                     full_stream.seek(40)
                     stream = self.dctx.stream_reader(full_stream)
                     self._nm = compose_names_data(stream)
-                except (OSError, zstd.ZstdError) as e:
+                except (OSError, ZstdError) as e:
                     raise VromfsUnpackError('Ошибка при распаковке таблицы имен.') from e
 
         return self._nm
 
     @property
-    def dctx(self) -> t.Optional[zstd.ZstdDecompressor]:
+    def dctx(self) -> Optional[ZstdDecompressor]:
         """
         Объект декомпрессора, используемый при распаковке. None, если образ не содержит словарь.
 
@@ -318,19 +304,19 @@ class VromfsFile:
                 if p.suffix == '.dict':
                     info = i
                     break
-            format_ = zstd.FORMAT_ZSTD1
+            format_ = FORMAT_ZSTD1
             if info is None:
-                self._dctx = zstd.ZstdDecompressor(format=format_)
+                self._dctx = ZstdDecompressor(format=format_)
             else:
-                stream = io.BytesIO()
+                stream = BytesIO()
                 self._unpack_info_into_raw(info, stream)
                 data = stream.getvalue()
-                dict_ = zstd.ZstdCompressionDict(data, dict_type=zstd.DICT_TYPE_AUTO)
-                self._dctx = zstd.ZstdDecompressor(dict_data=dict_, format=format_)
+                dict_ = ZstdCompressionDict(data, dict_type=DICT_TYPE_AUTO)
+                self._dctx = ZstdDecompressor(dict_data=dict_, format=format_)
 
         return self._dctx
 
-    def _unpack_info_into_raw(self, info: FileInfo, ostream: t.BinaryIO):
+    def _unpack_info_into_raw(self, info: FileInfo, ostream: BinaryIO):
         """
         Распаковка файла как есть в двоичный поток, открытый для записи.
 
@@ -341,14 +327,14 @@ class VromfsFile:
         reader = RangedReader(self._vromfs_stream, info.offset, info.size)
         file_apply(reader, lambda c: ct.stream_write(ostream, c), info.size)
 
-    def _unpack_info_into_blk(self, info: FileInfo, ostream: t.TextIO, out_type: OutType, is_sorted: bool):
+    def _unpack_info_into_blk(self, info: FileInfo, ostream: TextIO, out_format: Format, is_sorted: bool) -> None:
         """
         Распаковка файла с преобразованием двоичных blk в текстовый поток, открытый для записи.
         Текстовые файлы копируются как есть как есть.
 
         :param info: Объект файла в образе.
         :param ostream: Выходной поток.
-        :param out_type: Тип выходных данных.
+        :param out_format: Формат выходных данных.
         :param is_sorted: Сортировать ключи для JSON.
         :raises ct.ConstructError: Ошибка при чтении потока. Ошибка при записи потока.
         :raises zstd.ZstdError: Ошибка при распаковке ZSTD контейнера.
@@ -356,7 +342,7 @@ class VromfsFile:
         :raises EnvironmentError: Ошибка при записи блока.
         """
 
-        cached_stream = io.BytesIO()
+        cached_stream = BytesIO()
         self._unpack_info_into_raw(info, cached_stream)
         cached_stream.seek(0)
         blk_header = cached_stream.read(4)
@@ -402,17 +388,17 @@ class VromfsFile:
             else:
                 logger.debug(f'{str(info.path)!r}: {blk_type.name} => UNKNOWN')
         else:
-            serialize_text(section, ostream, out_type.value, is_sorted)
-            logger.debug(f'{str(info.path)!r}: {blk_type.name} => {out_type.name}')
+            serialize_text(section, ostream, out_format, is_sorted)
+            logger.debug(f'{str(info.path)!r}: {blk_type.name} => {out_format.name}')
 
-    def _unpack_item(self, item: Item, path: Path, out_type: OutType, is_sorted: bool) -> Path:
+    def _unpack_item(self, item: Item, path: Path, out_format: Format, is_sorted: bool) -> Path:
         """
         Распаковка одного файла с заданным типом результата.
         В случае ошибки распаковки частичный результат доступен как ``target~``.
 
         :param item: Объект файла в образе.
         :param path: Путь выходной директории.
-        :param out_type: Тип выходных данных.
+        :param out_format: Формат выходных данных.
         :param is_sorted: Сортировать ключи для JSON.
         :return: Путь распакованного файла.
         :raises EnvironmentError: Ошибка при создании директории.
@@ -430,10 +416,10 @@ class VromfsFile:
         target.parent.mkdir(parents=True, exist_ok=True)
         tmp = target.with_name(target.name + '~')
 
-        if out_type is not OutType.RAW and item.path.suffix == '.blk':
+        if out_format is not Format.RAW and item.path.suffix == '.blk':
             with create_text(tmp) as ostream:
                 try:
-                    self._unpack_info_into_blk(item, ostream, out_type, is_sorted)
+                    self._unpack_info_into_blk(item, ostream, out_format, is_sorted)
                     ostream.close()
                     tmp.replace(target)
                 except Exception:
@@ -450,8 +436,8 @@ class VromfsFile:
 
         return target
 
-    def unpack_into(self, item: Item, ostream: t.Optional[io.IOBase] = None
-                    ) -> io.IOBase:
+    def unpack_into(self, item: Item, ostream: Optional[IOBase] = None
+                    ) -> IOBase:
         """
         Распаковка одного файла в поток как есть в двоичный поток, открытый для записи.
         Ostream будет создан в памяти, если задан как None.
@@ -465,8 +451,8 @@ class VromfsFile:
         """
 
         if ostream is None:
-            ostream = io.BytesIO()
-        elif not isinstance(ostream, io.IOBase) or not ostream.writable():
+            ostream = BytesIO()
+        elif not isinstance(ostream, IOBase) or not ostream.writable():
             raise TypeError('ostream: ожидалось None | Binary Writer: {}'.format(type(ostream)))
 
         if not isinstance(item, FileInfo):
@@ -480,7 +466,7 @@ class VromfsFile:
         return ostream
 
     @staticmethod
-    def _validated_path(path: t.Optional[os.PathLike]) -> Path:
+    def _validated_path(path: Optional[os.PathLike]) -> Path:
         """
         Проверка имени директории. Текущая директория, если задана как None/
 
@@ -500,8 +486,8 @@ class VromfsFile:
 
         return path
 
-    def _sorted_infos(self, items: t.Optional[t.Iterable[Item]], absent: t.Optional[t.MutableSequence[Path]] = None
-                      ) -> t.Iterable[FileInfo]:
+    def _sorted_infos(self, items: Optional[Iterable[Item]], absent: Optional[MutableSequence[Path]] = None
+                      ) -> Iterable[FileInfo]:
         """
         Объекты файлов в образе в порядке возрастания смещений.
         Если items задан как None, принимаются все объекты файлов в образе.
@@ -532,8 +518,8 @@ class VromfsFile:
 
         return infos
 
-    def unpack_gen(self, path: t.Optional[os.PathLike] = None, items: t.Optional[t.Iterable[Item]] = None,
-                   out_type: OutType = OutType.RAW, is_sorted: bool = False) -> t.Generator[ExtractResult, None, None]:
+    def unpack_gen(self, path: Optional[os.PathLike] = None, items: Optional[Iterable[Item]] = None,
+                   out_format: Format = Format.RAW, is_sorted: bool = False) -> Generator[ExtractResult, None, None]:
         """
         Распаковка группы файлов с заданным типом результата.
         Если path задан как None, принимается путь текущей директории.
@@ -541,7 +527,7 @@ class VromfsFile:
 
         :param path: Путь выходной директории.
         :param items: Объекты файлов для распаковки.
-        :param out_type: Тип выходных данных.
+        :param out_format: Формат выходных данных.
         :param is_sorted: Сортировать ключи для JSON.
         :returns: Генератор ExtractResult, результат преобразования.
         :raises VromfsUnpackError: Ошибка при построении пространства имен.
@@ -558,13 +544,13 @@ class VromfsFile:
 
         for info in infos:
             try:
-                self._unpack_item(info, path, out_type, is_sorted)
+                self._unpack_item(info, path, out_format, is_sorted)
             except Exception as e:
                 yield ExtractResult(info.path, e)
             else:
                 yield ExtractResult(info.path, None)
 
-    def unpack(self, item: Item, path: t.Optional[os.PathLike] = None, out_type: OutType = OutType.RAW
+    def unpack(self, item: Item, path: Optional[os.PathLike] = None, out_format: Format = Format.RAW
                ) -> ExtractResult:
         """
         Распаковка одного файла с заданным типом результата.
@@ -572,16 +558,16 @@ class VromfsFile:
 
         :param path: Путь выходной директории.
         :param item: Объект файла для распаковки.
-        :param out_type: Тип выходных данных.
+        :param out_format: Формат выходных данных.
         :returns: ExtractResult, результат преобразования.
         :raises VromfsUnpackError: Ошибка при построении пространства имен.
         :raises TypeError: Неверный тип path.
         :raises KeyError: Внутренний путь отсутствует в карте имен.
         """
 
-        return next(self.unpack_gen(path, [item], out_type))
+        return next(self.unpack_gen(path, [item], out_format))
 
-    def check(self) -> t.Optional[t.Sequence[Path]]:
+    def check(self) -> Optional[Sequence[Path]]:
         """
         Проверка содержимого по дайджестам из блока SHA1. Bool для образа с блоком SHA1, иначе None.
 
@@ -595,7 +581,7 @@ class VromfsFile:
                 if info.digest is None:
                     return None
                 else:
-                    m = hashlib.sha1()
+                    m = sha1()
                     reader = RangedReader(self._vromfs_stream, info.offset, info.size)
                     file_apply(reader, m.update, info.size)
                     if m.digest != info.digest:
@@ -605,8 +591,8 @@ class VromfsFile:
 
         return None
 
-    def digests_table(self, items: t.Optional[t.Iterable[Item]] = None,
-                      absent: t.MutableSequence[Path] = None) -> t.Mapping[Path, bytes]:
+    def digests_table(self, items: Optional[Iterable[Item]] = None,
+                      absent: MutableSequence[Path] = None) -> Mapping[Path, bytes]:
         """
         Таблица ``{внутреннее имя файла => SHA1 дайджест содержимого}``.
 
@@ -617,7 +603,7 @@ class VromfsFile:
         table = {}
         for info in self._sorted_infos(items, absent):
             if info.digest is None:
-                m = hashlib.sha1()
+                m = sha1()
                 reader = RangedReader(self._vromfs_stream, info.offset, info.size)
                 file_apply(reader, m.update, info.size)
                 digest = m.digest()
@@ -629,8 +615,8 @@ class VromfsFile:
         return table
 
     @classmethod
-    def pack_into(cls, source: os.PathLike, ostream: t.Optional[io.IOBase] = None,
-                  extended: bool = False, checked: bool = False) -> io.IOBase:
+    def pack_into(cls, source: os.PathLike, ostream: Optional[IOBase] = None,
+                  extended: bool = False, checked: bool = False) -> IOBase:
         """
         **Для подготовки тестовых данных.**
 
@@ -656,8 +642,8 @@ class VromfsFile:
             raise TypeError('source: ожидалась директория.')
 
         if ostream is None:
-            ostream = io.BytesIO()
-        elif not (isinstance(ostream, io.IOBase) or not ostream.writable()):
+            ostream = BytesIO()
+        elif not (isinstance(ostream, IOBase) or not ostream.writable()):
             raise TypeError('ostream: ожидалось None | Binary Writer: {}'.format(type(ostream)))
 
         if checked and not extended:
@@ -733,7 +719,7 @@ class VromfsFile:
                 with open(path, 'rb') as istream:
                     bs = ct.stream_read(istream, size)
                 if checked:
-                    digest = hashlib.sha1(bs).digest()
+                    digest = sha1(bs).digest()
                     digests_data.append(digest)
                 datum_con = ct.Aligned(16, ct.Bytes(size))
                 datum_con.build_stream(bs, ostream)
@@ -760,7 +746,7 @@ class VromfsFile:
                 ))
                 digests_header_con.build_stream(dict(end=end, begin=begin), ostream)
 
-            ct.stream_seek(ostream, 0, io.SEEK_END)
+            ct.stream_seek(ostream, 0, SEEK_END)
         except ct.ConstructError as e:
             raise VromfsPackError('Ошибка при формировании метаданных: секции адресов и дайджестов.') from e
 

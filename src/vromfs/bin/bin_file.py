@@ -1,12 +1,12 @@
-import hashlib
-import io
+from hashlib import md5
+from io import BytesIO, IOBase, SEEK_CUR, SEEK_END, SEEK_SET
 import os
 from pathlib import Path
-import typing as t
-import zstandard as zstd
+from typing import BinaryIO, Optional, Tuple, Union
+from zstandard import ZstdCompressor, ZstdDecompressor
 import construct as ct
-from .common import *
-from .error import *
+from .common import BinExtHeader, BinHeader, HeaderType, PackType, PlatformType
+from .error import BinPackError, BinUnpackError
 from vromfs.common import file_apply
 from vromfs.ranged_reader import RangedReader
 from vromfs.obfs_reader import ObfsReader
@@ -23,21 +23,21 @@ BinContainer = ct.Struct(
     'ext_header' / ct.If(lambda ctx: ctx.header.type is HeaderType.VRFX, BinExtHeader),
     'offset' / ct.Tell,
     ct.Seek(lambda ctx: ctx.header.size if ctx.header.packed.type is PackType.PLAIN else ctx.header.packed.size,
-            io.SEEK_CUR),
+            SEEK_CUR),
     'digest' / ct.If(lambda ctx: ctx.header.packed.type is not PackType.ZSTD_OBFS_NOCHECK, ct.Bytes(16)),
     'extra' / ct.GreedyBytes,
     ct.Check(lambda ctx: len(ctx.extra) in (0, 0x100)),
 )
 
-Version = t.Tuple[int, int, int, int]
+Version = Tuple[int, int, int, int]
 
 
-class BinFile(io.IOBase):
+class BinFile(IOBase):
     """
     Класс для работы с bin контейнером.
     """
 
-    def __init__(self, source: t.Union[os.PathLike, io.IOBase]):
+    def __init__(self, source: Union[os.PathLike, IOBase]):
         """
         :param source: Входной файл или путь к файлу контейнера.
         :raises TypeError: Неверный тип source.
@@ -48,7 +48,7 @@ class BinFile(io.IOBase):
             self._bin_stream = open(source, 'rb')
             self._owner = True
             self._name = os.fspath(source)
-        elif isinstance(source, io.IOBase) and source.readable():
+        elif isinstance(source, IOBase) and source.readable():
             self._bin_stream = source
             self._owner = False
             maybe_name = getattr(source, 'name', None)
@@ -63,7 +63,7 @@ class BinFile(io.IOBase):
         self._meta = None
 
     @property
-    def name(self) -> t.Optional[str]:
+    def name(self) -> Optional[str]:
         """
         Имя файла. None, если объект на основе потока.
         """
@@ -136,7 +136,7 @@ class BinFile(io.IOBase):
         return self.pack_type != PackType.ZSTD_OBFS_NOCHECK
 
     @property
-    def digest(self) -> t.Optional[bytes]:
+    def digest(self) -> Optional[bytes]:
         """
         MD5 дайджест содержимого контейнера. None, если метаданные не содержат дайджеста.
 
@@ -146,7 +146,7 @@ class BinFile(io.IOBase):
         return self.meta.digest
 
     @property
-    def version(self) -> t.Optional[Version]:
+    def version(self) -> Optional[Version]:
         """
         Версия файла. None, если версия отсутствует в заголовке.
 
@@ -156,7 +156,7 @@ class BinFile(io.IOBase):
         return None if self.meta.header.type is HeaderType.VRFS else self.meta.ext_header.version
 
     @property
-    def stream(self) -> t.BinaryIO:
+    def stream(self) -> BinaryIO:
         """
         Поток содержимого контейнера.
 
@@ -180,7 +180,7 @@ class BinFile(io.IOBase):
         offset = self.meta.offset
         size = self.meta.header.packed.size
         obfs_reader = ObfsReader(RangedReader(self._bin_stream, offset, size), size)
-        dctx = zstd.ZstdDecompressor()
+        dctx = ZstdDecompressor()
         self._stream = dctx.stream_reader(obfs_reader)
 
     def close(self):
@@ -191,7 +191,7 @@ class BinFile(io.IOBase):
     def readable(self) -> bool:
         return True
 
-    def seek(self, target: int, whence: int = io.SEEK_SET) -> int:
+    def seek(self, target: int, whence: int = SEEK_SET) -> int:
         """
         Смена позиции в потоке содержимого контейнера.
         Для контейнера со сжатием передвижение назад повлечет сброс потока содержимого.
@@ -201,11 +201,11 @@ class BinFile(io.IOBase):
 
         if self.compressed:
             pos = self.stream.tell()
-            if whence == io.SEEK_SET and target < pos:
+            if whence == SEEK_SET and target < pos:
                 self._set_compressed_stream()
-            elif whence == io.SEEK_CUR and target < 0:
+            elif whence == SEEK_CUR and target < 0:
                 self._set_compressed_stream()
-            elif whence == io.SEEK_END:
+            elif whence == SEEK_END:
                 raise ValueError('Offsets relative to the end of stream are not allowed.')
 
         return self.stream.seek(target, whence)
@@ -216,7 +216,7 @@ class BinFile(io.IOBase):
     def tell(self) -> int:
         return self.stream.tell()
 
-    def check(self) -> t.Optional[bool]:
+    def check(self) -> Optional[bool]:
         """Проверка содержимого по MD5 дайджесту в контейнере.
 
         :returns: Результат проверки. Bool для контейнера с MD5 дайджестом, иначе None.
@@ -225,14 +225,14 @@ class BinFile(io.IOBase):
         """
 
         if self.checked:
-            m = hashlib.md5()
+            m = md5()
             self.seek(0)
             file_apply(self, m.update, self.size)
             return m.digest() == self.digest
 
         return None
 
-    def unpack_into(self, ostream: t.Optional[io.IOBase] = None) -> io.IOBase:
+    def unpack_into(self, ostream: Optional[IOBase] = None) -> IOBase:
         """
         **Для подготовки тестовых данных.**
 
@@ -248,8 +248,8 @@ class BinFile(io.IOBase):
         """
 
         if ostream is None:
-            ostream = io.BytesIO()
-        elif not isinstance(ostream, io.IOBase) or not ostream.writable():
+            ostream = BytesIO()
+        elif not isinstance(ostream, IOBase) or not ostream.writable():
             raise TypeError('ostream: ожидалось None | Binary Writer: {}'.format(type(ostream)))
 
         self.seek(0)
@@ -287,9 +287,9 @@ class BinFile(io.IOBase):
                 raise
 
     @classmethod
-    def pack_into(cls, istream: io.IOBase, ostream: t.Optional[io.IOBase],
-                  platform: PlatformType, version: t.Optional[Version], compressed: bool, checked: bool,
-                  size: int, extra: t.Optional[bytes] = None) -> io.IOBase:
+    def pack_into(cls, istream: IOBase, ostream: Optional[IOBase],
+                  platform: PlatformType, version: Optional[Version], compressed: bool, checked: bool,
+                  size: int, extra: Optional[bytes] = None) -> IOBase:
         """
         **Для подготовки тестовых данных.**
 
@@ -310,12 +310,12 @@ class BinFile(io.IOBase):
         :raises BinPackError: Ошибка при записи.
         """
 
-        if not (isinstance(istream, io.IOBase) or not istream.readable()):
+        if not (isinstance(istream, IOBase) or not istream.readable()):
             raise TypeError('Ожидался Binary Reader: {}'.format(type(istream)))
 
         if ostream is None:
-            ostream = io.BytesIO()
-        elif not (isinstance(ostream, io.IOBase) or not ostream.writable()):
+            ostream = BytesIO()
+        elif not (isinstance(ostream, IOBase) or not ostream.writable()):
             raise TypeError('ostream: ожидалось None | Binary Writer: {}'.format(type(ostream)))
 
         if not isinstance(platform, PlatformType):
@@ -347,13 +347,13 @@ class BinFile(io.IOBase):
             raise TypeError('compress, check: не определен тип упаковки для compress == check == False')
 
         packed_size = 0
-        image = io.BytesIO()
+        image = BytesIO()
         if compressed:
-            cctx = zstd.ZstdCompressor()
+            cctx = ZstdCompressor()
             with cctx.stream_writer(image, closefd=False) as compressed_writer:
                 if checked:
                     packed_type = PackType.ZSTD_OBFS
-                    m = hashlib.md5()
+                    m = md5()
                     try:
                         file_apply(istream, lambda c: (m.update(c) or ct.stream_write(compressed_writer, c)), size)
                     except ct.ConstructError as e:
@@ -373,7 +373,7 @@ class BinFile(io.IOBase):
             if checked:
                 try:
                     packed_type = PackType.PLAIN
-                    m = hashlib.md5()
+                    m = md5()
                     file_apply(istream, m.update, size)
                     digest = m.digest()
                 except ct.ConstructError as e:
@@ -421,8 +421,8 @@ class BinFile(io.IOBase):
 
     @classmethod
     def pack(cls, source: os.PathLike, target: os.PathLike,
-             platform: PlatformType, version: t.Optional[t.Tuple[int, int, int, int]],
-             compressed: bool, checked: bool, extra: t.Optional[bytes] = None):
+             platform: PlatformType, version: Optional[Tuple[int, int, int, int]],
+             compressed: bool, checked: bool, extra: Optional[bytes] = None):
         """
         **Для подготовки тестовых данных.**
 

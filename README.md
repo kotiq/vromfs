@@ -69,7 +69,7 @@ python -m json.tool
 ### Распаковка файлов
 
 ```shell
-vromfs_bin_unpacker [--format {RAW,STRICT_BLK,JSON,JSON_2,JSON_3}]
+vromfs_bin_unpacker [--format {json,json_2,json_3,raw,strict_blk}]
                     [--sort]
                     [--input_filelist MAYBE_IN_FILES]
                     [-x]
@@ -79,7 +79,7 @@ vromfs_bin_unpacker [--format {RAW,STRICT_BLK,JSON,JSON_2,JSON_3}]
 
 Аргументы:
 
-- `--format` Формат выходного блока, не зависит от регистра. `Raw`: распаковать как есть. По умолчанию `json`.
+- `--format` Формат выходного блока, не зависит от регистра. `raw`: распаковать как есть. По умолчанию `json`.
 - `--sort` Сортировать ключи для форматов `json`, `json_2`, `json_3`.
 - `--input_filelist` Файл с JSON списком файлов, `-` для чтения из `stdin`. Если не указан, распаковать все файлы из 
 образа.

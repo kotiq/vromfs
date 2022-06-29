@@ -1,18 +1,18 @@
 from enum import Enum
-import typing as t
+from typing import Any, NoReturn, Type
 import construct as ct
 
 __all__ = [
-    'HeaderType',
-    'PlatformType',
-    'PackType',
-    'enum',
-    'VersionCon',
-    'HeaderTypeCon',
-    'PlatformTypeCon',
-    'PackTypeCon',
     'BinExtHeader',
     'BinHeader',
+    'HeaderType',
+    'HeaderTypeCon',
+    'PackType',
+    'PackTypeCon',
+    'PlatformType',
+    'PlatformTypeCon',
+    'VersionCon',
+    'enum'
 ]
 
 
@@ -39,12 +39,12 @@ class PackType(Enum):
     """checked: 1, compressed: 1"""
 
 
-def not_implemented(obj: t.Any, context: ct.Container) -> t.NoReturn:
+def not_implemented(obj: Any, context: ct.Container) -> NoReturn:
     raise NotImplementedError
 
 
 class enum(ct.Adapter):
-    def __init__(self, subcon: ct.Subconstruct, enum_: t.Type[Enum]):
+    def __init__(self, subcon: ct.Subconstruct, enum_: Type[Enum]):
         self.enum = enum_
         super().__init__(ct.Enum(subcon, enum_))
 
@@ -54,7 +54,7 @@ class enum(ct.Adapter):
         except KeyError:
             raise ct.MappingError("Неизвестное имя для {}: {}".format(self.enum.__name__, obj))
 
-    def _encode(self, obj: Enum, context: ct.Container, path: str) -> t.Any:
+    def _encode(self, obj: Enum, context: ct.Container, path: str) -> Any:
         try:
             return obj.name
         except AttributeError:

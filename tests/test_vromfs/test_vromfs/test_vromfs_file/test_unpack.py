@@ -4,7 +4,8 @@ from pathlib import Path
 import pytest
 from pytest import param as _
 from pytest_lazyfixture import lazy_fixture
-from vromfs.vromfs import VromfsFile, OutType
+from blk import Format
+from vromfs.vromfs import VromfsFile
 from helpers import make_tmppath, make_logger, make_outpath
 
 logger = make_logger(__name__)
@@ -12,19 +13,19 @@ outpath = make_outpath(__name__)
 tmppath = make_tmppath(__name__)
 
 
-@pytest.mark.parametrize('out_type', [
-    _(OutType.RAW, id='raw'),
-    _(OutType.STRICT_BLK, id='strict_blk'),
+@pytest.mark.parametrize('out_format', [
+    _(Format.RAW, id='raw'),
+    _(Format.STRICT_BLK, id='strict_blk'),
 ])
 @pytest.mark.parametrize('vromfsfile_', [
     lazy_fixture('vromfsfile'),
     lazy_fixture('vromfsbinfile'),
 ])
-def test_unpack_all_check_digests(vromfsfile_: VromfsFile, out_type: OutType, tmppath: Path, logger: logging.Logger):
+def test_unpack_all_check_digests(vromfsfile_: VromfsFile, out_format: Format, tmppath: Path, logger: logging.Logger):
     in_path = Path(vromfsfile_.name)
     out_path = tmppath / in_path.stem
     failed = successful = 0
-    for result in vromfsfile_.unpack_gen(out_path, out_type=out_type):
+    for result in vromfsfile_.unpack_gen(out_path, out_format=out_format):
         if result.error is not None:
             failed += 1
             logger.error(f'[FAIL] {str(in_path)!r}::{str(result.path)!r}: {result.error}')
@@ -34,7 +35,7 @@ def test_unpack_all_check_digests(vromfsfile_: VromfsFile, out_type: OutType, tm
     for path, info in vromfsfile_.info_map.items():
         target = out_path / path
         assert target.exists()
-        if out_type is OutType.RAW:
+        if out_format is Format.RAW:
             assert info.size == target.stat().st_size
 
     if vromfsfile_.checked:
@@ -59,7 +60,7 @@ def test_unpack_all_blk_strict_blk(vromfsbinfile: VromfsFile, tmppath: Path, log
     out_path = tmppath / in_path.stem
     failed = successful = 0
     infos = tuple(filter(lambda i: i.path.suffix == '.blk', vromfsfile.info_map.values()))
-    for result in vromfsfile.unpack_gen(out_path, infos, OutType.STRICT_BLK):
+    for result in vromfsfile.unpack_gen(out_path, infos, Format.STRICT_BLK):
         if result.error is not None:
             failed += 1
             logger.error(f'[FAIL] {str(in_path)!r}::{str(result.path)!r}: {result.error}')

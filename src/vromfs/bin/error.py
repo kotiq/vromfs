@@ -1,7 +1,7 @@
 __all__ = [
     'BinError',
-    'BinUnpackError',
     'BinPackError',
+    'BinUnpackError',
 ]
 
 

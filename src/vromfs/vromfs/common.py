@@ -1,17 +1,17 @@
 import os
 from pathlib import Path
-import typing as t
+from typing import BinaryIO, Callable, MutableSequence, NamedTuple, Optional, Sequence, TypeVar, Union
 import construct as ct
 from construct import this
 
 __all__ = [
+    'FileInfo',
     'Name',
     'NamesData',
-    'FileInfo',
 ]
 
-T = t.TypeVar('T')
-VT = t.Union[T, t.Callable[[ct.Container], T]]
+T = TypeVar('T')
+VT = Union[T, Callable[[ct.Container], T]]
 
 RawCString = ct.NullTerminated(ct.GreedyBytes)
 
@@ -43,12 +43,12 @@ Name = NameAdapter(RawCString)
 
 
 class NamesData(ct.Construct):
-    def __init__(self, offsets: VT[t.Union[t.Sequence[int], t.MutableSequence[int]]]):
+    def __init__(self, offsets: VT[Union[Sequence[int], MutableSequence[int]]]):
         super().__init__()
         self.offsets = offsets
 
-    def _parse(self, stream: t.BinaryIO, context: ct.Container, path: str) -> t.Sequence[Path]:
-        offsets: t.Sequence[int] = ct.evaluate(self.offsets, context)
+    def _parse(self, stream: BinaryIO, context: ct.Container, path: str) -> Sequence[Path]:
+        offsets: Sequence[int] = ct.evaluate(self.offsets, context)
         if not offsets:
             raise ct.CheckError('Ожидалась не пустая последовательность смещений.')
 
@@ -63,12 +63,11 @@ class NamesData(ct.Construct):
         ct.stream_seek(stream, max_end_offset)
         return names
 
-    def _build(self, obj: t.Sequence[Path], stream: ct.Container, context: ct.Container, path: str
-               ) -> t.Sequence[Path]:
+    def _build(self, obj: Sequence[Path], stream: ct.Container, context: ct.Container, path: str) -> Sequence[Path]:
         if not obj:
             raise ct.CheckError('Ожидалась не пустая последовательность имен.')
 
-        offsets: t.MutableSequence[int] = ct.evaluate(self.offsets, context)
+        offsets: MutableSequence[int] = ct.evaluate(self.offsets, context)
         offsets.clear()
 
         for name in obj:
@@ -85,7 +84,7 @@ Names = ct.Struct(
 )
 
 
-class FileInfo(t.NamedTuple):
+class FileInfo(NamedTuple):
     path: Path
     """Относительный путь."""
 
@@ -95,5 +94,5 @@ class FileInfo(t.NamedTuple):
     size: int
     """Размер данных в байтах."""
 
-    digest: t.Optional[bytes]
+    digest: Optional[bytes]
     """SHA-1 дайджест данных."""

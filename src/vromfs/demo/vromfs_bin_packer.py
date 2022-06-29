@@ -1,10 +1,10 @@
-import argparse
+from argparse import Action, ArgumentError, ArgumentParser, Namespace
 import os.path
-import io
+from io import BytesIO, SEEK_END
 import logging
 from pathlib import Path
 import sys
-import typing as t
+from typing import NamedTuple, Optional, Type
 from vromfs.bin import BinFile, Version, BinPackError, PlatformType
 from vromfs.vromfs import VromfsFile, VromfsPackError
 
@@ -23,29 +23,29 @@ def get_logger(name: str) -> logging.Logger:
 logger = get_logger('vromfs')
 
 
-class ArgsNS(t.NamedTuple):
+class ArgsNS(NamedTuple):
     version: Version
     out_path: Path
     in_path: Path
 
 
-class MakeVersion(argparse.Action):
-    def __call__(self, parser: argparse.ArgumentParser, namespace: argparse.Namespace,
-                 values: str, option_string=None) -> None:
+class MakeVersion(Action):
+    def __call__(self, parser: ArgumentParser, namespace: Namespace,
+                 values: str, option_string: Optional[str] = None) -> None:
         xs = values.split('.')
         sz = len(xs)
         if sz > 4:
-            raise argparse.ArgumentError(self, 'Ожидалось 4х компонентное значение с разделителем "."')
+            raise ArgumentError(self, 'Ожидалось 4х компонентное значение с разделителем "."')
 
         vs = []
         for i, x in enumerate(xs, 1):
             try:
                 v = int(x)
             except ValueError:
-                raise argparse.ArgumentError(self, 'Ожидалось десятичное целое: поз.{}, {}'.format(i, x))
+                raise ArgumentError(self, 'Ожидалось десятичное целое: поз.{}, {}'.format(i, x))
             else:
                 if not 0 <= v < 256:
-                    raise argparse.ArgumentError(self, 'Ожидалось целое 0... 255: поз.{}, {}'.format(i, v))
+                    raise ArgumentError(self, 'Ожидалось целое 0... 255: поз.{}, {}'.format(i, v))
                 vs.append(v)
 
         for _ in range(4 - sz):
@@ -54,17 +54,17 @@ class MakeVersion(argparse.Action):
         setattr(namespace, self.dest, tuple(vs))
 
 
-def make_in_path(out_path_dest: str) -> t.Type[argparse.Action]:
-    class MakeInputPath(argparse.Action):
-        def __call__(self, parser: argparse.ArgumentParser, namespace: argparse.Namespace,
-                     values: str, option_string=None) -> None:
+def make_in_path(out_path_dest: str) -> Type[Action]:
+    class MakeInputPath(Action):
+        def __call__(self, parser: ArgumentParser, namespace: Namespace,
+                     values: str, option_string: Optional[str] = None) -> None:
             out_path: Path = getattr(namespace, out_path_dest).absolute()
             in_path = Path(values).absolute()
             if not in_path.is_dir():
-                raise argparse.ArgumentError(self, 'Ожидалась директория: {}'.format(in_path))
+                raise ArgumentError(self, 'Ожидалась директория: {}'.format(in_path))
             # if out_path.is_relative_to(in_path):  # 3.9+
             if Path(os.path.commonpath([in_path, out_path])) == in_path:
-                raise argparse.ArgumentError(self, 'Выходной файл во входной директории: {}'.format(in_path))
+                raise ArgumentError(self, 'Выходной файл во входной директории: {}'.format(in_path))
 
             setattr(namespace, self.dest, in_path)
 
@@ -72,7 +72,7 @@ def make_in_path(out_path_dest: str) -> t.Type[argparse.Action]:
 
 
 def get_args() -> ArgsNS:
-    parser = argparse.ArgumentParser(description='Упаковщик vromfs bin контейнера.')
+    parser = ArgumentParser(description='Упаковщик vromfs bin контейнера.')
     parser.add_argument('-v', '--ver', dest='version',  action=MakeVersion, required=True,
                         help='Версия архива xxx.yyy.zzz.www')
     parser.add_argument('-o', '--output', dest='out_path', type=Path, default=Path('out.vromfs.bin'),
@@ -85,7 +85,7 @@ def get_args() -> ArgsNS:
 
 def main() -> int:
     args_ns = get_args()
-    vromfs_stream = io.BytesIO()
+    vromfs_stream = BytesIO()
     try:
         VromfsFile.pack_into(args_ns.in_path, vromfs_stream)
     except VromfsPackError as e:
@@ -95,7 +95,7 @@ def main() -> int:
 
     logger.debug(f'{args_ns.in_path} => temp vromfs')
 
-    vromfs_size = vromfs_stream.seek(0, io.SEEK_END)
+    vromfs_size = vromfs_stream.seek(0, SEEK_END)
     vromfs_stream.seek(0)
 
     logger.debug(f'Размер временного образа: {vromfs_size}')

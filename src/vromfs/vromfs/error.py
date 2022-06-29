@@ -1,3 +1,10 @@
+__all__ = [
+    'VromfsError',
+    'VromfsPackError',
+    'VromfsUnpackError',
+]
+
+
 class VromfsError(Exception):
     pass
 
