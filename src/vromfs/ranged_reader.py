@@ -1,8 +1,12 @@
-import io
+from io import IOBase, SEEK_CUR, SEEK_END, SEEK_SET
+
+__all__ = [
+    'RangedReader',
+]
 
 
-class RangedReader(io.IOBase):
-    def __init__(self, wrapped: io.IOBase, offset: int, size: int):
+class RangedReader(IOBase):
+    def __init__(self, wrapped: IOBase, offset: int, size: int):
         if offset < 0:
             raise ValueError("invalid offset: {}".format(offset))
         if size < 0:
@@ -18,19 +22,19 @@ class RangedReader(io.IOBase):
     def seekable(self) -> bool:
         return self.wrapped.seekable()
 
-    def seek(self, target: int, whence: int = io.SEEK_SET) -> int:
-        if whence == io.SEEK_SET:
+    def seek(self, target: int, whence: int = SEEK_SET) -> int:
+        if whence == SEEK_SET:
             if target < 0:
                 raise ValueError('negative seek value {}'.format(target))
             self.pos = target
         else:
-            if whence == io.SEEK_CUR:
+            if whence == SEEK_CUR:
                 pos = self.pos + target
-            elif whence == io.SEEK_END:
+            elif whence == SEEK_END:
                 pos = self.size + target
             else:
                 raise ValueError('invalid whence ({}, should be {}, {} or {})'.
-                                 format(whence, io.SEEK_SET, io.SEEK_CUR, io.SEEK_END))
+                                 format(whence, SEEK_SET, SEEK_CUR, SEEK_END))
             self.pos = 0 if pos < 0 else pos
 
         return self.pos

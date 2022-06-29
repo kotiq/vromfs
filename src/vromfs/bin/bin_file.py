@@ -1,5 +1,6 @@
 from hashlib import md5
 from io import BytesIO, IOBase, SEEK_CUR, SEEK_END, SEEK_SET
+import logging
 import os
 from pathlib import Path
 from typing import BinaryIO, Optional, Tuple, Union
@@ -17,6 +18,7 @@ __all__ = [
     'Version',
 ]
 
+logger = logging.getLogger(__name__)
 
 BinContainer = ct.Struct(
     'header' / BinHeader,
@@ -164,6 +166,7 @@ class BinFile(IOBase):
         """
 
         if self._stream is None:
+
             if self.compressed:
                 self._set_compressed_stream()
             else:
@@ -177,6 +180,7 @@ class BinFile(IOBase):
         self._stream = RangedReader(self._bin_stream, offset, size)
 
     def _set_compressed_stream(self):
+        logger.debug('Сброс потока.')
         offset = self.meta.offset
         size = self.meta.header.packed.size
         obfs_reader = ObfsReader(RangedReader(self._bin_stream, offset, size), size)

@@ -1,20 +1,21 @@
 from collections import OrderedDict
-from enum import Enum
+from enum import IntEnum
 from hashlib import sha1
 from io import BytesIO, IOBase, SEEK_END
-from itertools import repeat
+from itertools import chain, repeat
 import logging
 import os
 from pathlib import Path
-from typing import (BinaryIO, Generator, Iterable, Mapping, MutableSequence, NamedTuple, Optional, OrderedDict as ODict,
-                    Sequence, TextIO, Union)
+from typing import (Any, BinaryIO, Generator, Iterable, Mapping, MutableSequence, NamedTuple, Optional,
+                    OrderedDict as ODict, Sequence, TextIO, Union)
 import construct as ct
 from construct import this
 from zstandard import DICT_TYPE_AUTO, FORMAT_ZSTD1, ZstdCompressionDict, ZstdDecompressor, ZstdError
 import blk.text as txt
 import blk.json as jsn
 from blk import Format, Section
-from blk.binary import compose_names_data, compose_fat_data, compose_slim_data, compose_bbf, compose_bbf_zlib
+from blk.binary import (compose_fat, compose_names_data, compose_partial_bbf, compose_partial_bbf_zlib,
+                        compose_partial_fat, compose_partial_slim)
 from vromfs.common import file_apply
 from vromfs.ranged_reader import RangedReader
 from .common import FileInfo, NamesData
@@ -34,35 +35,25 @@ class ExtractResult(NamedTuple):
     error: Optional[Exception]
 
 
-class BlkType(Enum):
-    BBF = 'bbf'
-    BBZ = 'bbz'
-    FAT = 'fat'
-    FAT_ZST = 'fat_zst'
-    SLIM = 'slim'
-    SLIM_ZST = 'slim_zst'
-    SLIM_ZST_DICT = 'slim_zst_dict'
-    OTHER = 'other'
+class BlkType(IntEnum):
+    BBF = 0
+    FAT = 1
+    FAT_ZST = 2
+    SLIM = 3
+    SLIM_ZST = 4
+    SLIM_ZST_DICT = 5
+    OTHER = -1
 
     @classmethod
-    def from_header(cls, data: bytes) -> 'BlkType':
-        if data.startswith(b'\x00BBF'):
-            type_ = cls.BBF
-        elif data.startswith(b'\x00BBz'):
-            type_ = cls.BBZ
-        elif data.startswith(b'\x01'):
-            type_ = cls.FAT
-        elif data.startswith(b'\x02'):
-            type_ = cls.FAT_ZST
-        elif data.startswith(b'\x03'):
-            type_ = cls.SLIM
-        elif data.startswith(b'\x04'):
-            type_ = cls.SLIM_ZST
-        elif data.startswith(b'\x05'):
-            type_ = cls.SLIM_ZST_DICT
-        else:
-            type_ = cls.OTHER
-        return type_
+    def from_byte(cls, byte: bytes) -> 'BlkType':
+        return {
+            0: cls.BBF,  # BBF | BBZ
+            1: cls.FAT,
+            2: cls.FAT_ZST,
+            3: cls.SLIM,
+            4: cls.SLIM_ZST,
+            5: cls.SLIM_ZST_DICT,
+        }.get(byte[0], cls.OTHER)
 
 
 Image = ct.Struct(
@@ -124,7 +115,7 @@ class VromfsFile:
     Класс для работы с VROMFS образом.
     """
 
-    def __init__(self, source: Union[os.PathLike, IOBase]):
+    def __init__(self, source: Union[os.PathLike, IOBase]) -> None:
         """
         :param source: Входной файл или путь к файлу образа.
         :raises TypeError: Неверный тип source.
@@ -151,7 +142,7 @@ class VromfsFile:
         self._nm = None
         self._dctx = None
 
-    def close(self):
+    def close(self) -> None:
         if self._owner:
             self._vromfs_stream.close()
 
@@ -163,8 +154,9 @@ class VromfsFile:
 
         return self._name
 
+    # todo: обернуть в пространство имен с известными членами
     @property
-    def meta(self):
+    def meta(self) -> Any:
         """
         Вспомогательное пространство имен метаданных образа VROMFS.
 
@@ -342,48 +334,46 @@ class VromfsFile:
         :raises EnvironmentError: Ошибка при записи блока.
         """
 
-        cached_stream = BytesIO()
-        self._unpack_info_into_raw(info, cached_stream)
-        cached_stream.seek(0)
-        blk_header = cached_stream.read(4)
-        if not blk_header:
+        istream = RangedReader(self._vromfs_stream, info.offset, info.size)
+        fst = istream.read(1)
+        if not fst:
             logger.debug(f'{str(info.path)!r}: EMPTY')
             return
 
-        blk_type = BlkType.from_header(blk_header)
-
-        if blk_type == BlkType.FAT:
-            cached_stream.seek(1)
-            section = compose_fat_data(cached_stream)
-        elif blk_type == BlkType.FAT_ZST:
-            cached_stream.seek(0)
-            size_bs = cached_stream.read(4)
+        blk_type = BlkType.from_byte(fst)
+        head = b''
+        if blk_type is BlkType.FAT:
+            section = compose_partial_fat(istream)
+        elif blk_type is BlkType.FAT_ZST:
+            size_bs = istream.read(3)
             size = int.from_bytes(size_bs, byteorder='little')
-            blk_stream = self.dctx.stream_reader(RangedReader(cached_stream, 4, size))
-            blk_stream.seek(1)
-            section = compose_fat_data(blk_stream)
-        elif blk_type == BlkType.SLIM:
-            cached_stream.seek(1)
-            section = compose_slim_data(self.nm, cached_stream)
+            blk_stream = self.dctx.stream_reader(RangedReader(istream, 4, size))
+            section = compose_fat(blk_stream)
+        elif blk_type is BlkType.SLIM:
+            section = compose_partial_slim(self.nm, istream)
         elif blk_type in (BlkType.SLIM_ZST, BlkType.SLIM_ZST_DICT):
-            cached_stream.seek(1)
-            blk_stream = self.dctx.stream_reader(cached_stream)
-            section = compose_slim_data(self.nm, blk_stream)
-        elif blk_type == BlkType.BBF:
-            cached_stream.seek(0)
-            section = compose_bbf(cached_stream)
-        elif blk_type == BlkType.BBZ:
-            cached_stream.seek(0)
-            section = compose_bbf_zlib(cached_stream)
+            blk_stream = self.dctx.stream_reader(istream)
+            section = compose_partial_slim(self.nm, blk_stream)
+        elif blk_type is BlkType.BBF:
+            triple = istream.read(3)
+            if triple == b'BBF':
+                section = compose_partial_bbf(istream)
+            elif triple == b'BBz':
+                section = compose_partial_bbf_zlib(istream)
+            else:
+                section = None
+                head = fst + triple
         else:
             section = None
+            head = fst
 
         if section is None:
-            cached_stream.seek(0)
-            bs = cached_stream.read()
+            bs = istream.read()
             ostream.flush()
+            if head:
+                ostream.buffer.write(head)
             ostream.buffer.write(bs)
-            if is_text(bs):
+            if is_text(chain(head, bs)):
                 logger.debug(f'{str(info.path)!r}: {blk_type.name} => TEXT')
             else:
                 logger.debug(f'{str(info.path)!r}: {blk_type.name} => UNKNOWN')

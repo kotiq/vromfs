@@ -1,9 +1,14 @@
-import io
-import typing as t
-from .ranged_reader import RangedReader
+from io import IOBase, SEEK_SET
+from typing import Iterable
+
+__all__ = [
+    'ObfsReader',
+    'deobfuscate',
+    'obfuscate',
+]
 
 
-def inplace_xor(buffer: bytearray, offset: int, size: int, key: t.Iterable[int]) -> None:
+def inplace_xor(buffer: bytearray, offset: int, size: int, key: Iterable[int]) -> None:
     it = iter(key)
     for i in range(offset, offset + min(len(buffer), size)):
         buffer[i] ^= next(it)
@@ -30,8 +35,8 @@ def deobfuscate(bs: bytes) -> bytes:
 obfuscate = deobfuscate
 
 
-class ObfsReader(io.IOBase):
-    def __init__(self, wrapped: io.IOBase, size: int):
+class ObfsReader(IOBase):
+    def __init__(self, wrapped: IOBase, size: int):
         self.wrapped = wrapped
         if size < 0:
             raise ValueError("invalid size: {}".format(size))
@@ -46,7 +51,7 @@ class ObfsReader(io.IOBase):
     def tell(self) -> int:
         return self.wrapped.tell()
 
-    def seek(self, target: int, whence: int = io.SEEK_SET) -> int:
+    def seek(self, target: int, whence: int = SEEK_SET) -> int:
         return self.wrapped.seek(target, whence)
 
     def read(self, size: int = -1) -> bytes:
