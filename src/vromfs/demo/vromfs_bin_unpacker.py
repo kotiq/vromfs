@@ -133,7 +133,7 @@ def main():
         failed = successful = 0
         try:
             logger.info('Начало распаковки.')
-            for result in vromfs.unpack_gen(out_path, maybe_paths, args_ns.out_format, args_ns.is_sorted):
+            for result in vromfs.unpack_iter(out_path, maybe_paths, args_ns.out_format, args_ns.is_sorted):
                 if result.error is not None:
                     failed += 1
                     logger.error(f'[FAIL] {args_ns.input.name!r}::{str(result.path)!r}: {result.error}')

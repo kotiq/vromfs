@@ -1,10 +1,15 @@
-import hashlib
+from io import BytesIO
+from itertools import chain
+from hashlib import sha1
 import logging
 from pathlib import Path
+from pprint import pprint
+from typing import MutableMapping, Optional, Tuple, cast
 import pytest
 from pytest import param as _
 from pytest_lazyfixture import lazy_fixture
 from blk import Format
+from vromfs.bin import BinFile, Version
 from vromfs.vromfs import VromfsFile
 from helpers import make_tmppath, make_logger, make_outpath
 
@@ -25,12 +30,15 @@ def test_unpack_all_check_digests(vromfsfile_: VromfsFile, out_format: Format, t
     in_path = Path(vromfsfile_.name)
     out_path = tmppath / in_path.stem
     failed = successful = 0
-    for result in vromfsfile_.unpack_gen(out_path, out_format=out_format):
+
+    logger.info(f'Начало распаковки {str(in_path)!r}')
+    for result in vromfsfile_.unpack_iter(out_path, out_format=out_format):
         if result.error is not None:
             failed += 1
             logger.error(f'[FAIL] {str(in_path)!r}::{str(result.path)!r}: {result.error}')
         else:
             successful += 1
+    logger.info(f'Конец распаковки {str(in_path)!r}')
 
     for path, info in vromfsfile_.info_map.items():
         target = out_path / path
@@ -41,7 +49,7 @@ def test_unpack_all_check_digests(vromfsfile_: VromfsFile, out_format: Format, t
     if vromfsfile_.checked:
         for path, info in vromfsfile_.info_map.items():
             target = out_path / path
-            m = hashlib.sha1()
+            m = sha1()
             size = 2**20
             with open(target, 'rb') as istream:
                 for chunk in iter(lambda: istream.read(size), b''):
@@ -60,12 +68,14 @@ def test_unpack_all_blk_strict_blk(vromfsbinfile: VromfsFile, tmppath: Path, log
     out_path = tmppath / in_path.stem
     failed = successful = 0
     infos = tuple(filter(lambda i: i.path.suffix == '.blk', vromfsfile.info_map.values()))
-    for result in vromfsfile.unpack_gen(out_path, infos, Format.STRICT_BLK):
+    logger.info(f'Начало распаковки {str(in_path)!r}')
+    for result in vromfsfile.unpack_iter(out_path, infos, Format.STRICT_BLK):
         if result.error is not None:
             failed += 1
             logger.error(f'[FAIL] {str(in_path)!r}::{str(result.path)!r}: {result.error}')
         else:
             successful += 1
+    logger.info(f'Конец распаковки {str(in_path)!r}')
 
     for info in infos:
         target = out_path / info.path
@@ -75,3 +85,75 @@ def test_unpack_all_blk_strict_blk(vromfsbinfile: VromfsFile, tmppath: Path, log
 
     if failed:
         pytest.fail('Ошибка при обработке файлов.')
+
+
+def sha1_digest(path: Path, chunk_size: int = 2**20) -> Optional[bytes]:
+    m = sha1()
+    file_size = path.stat().st_size
+    n, r = divmod(file_size, chunk_size)
+    try:
+        with open(path, 'rb') as istream:
+            for _ in range(n):
+                chunk = istream.read(chunk_size)
+                if len(chunk) != chunk_size:
+                    return None
+                else:
+                    m.update(chunk)
+            rem = istream.read(r)
+            if len(rem) != r:
+                return None
+            else:
+                m.update(rem)
+    except OSError:
+        return None
+    else:
+        return m.digest()
+
+
+@pytest.mark.parametrize('root', lazy_fixture(['wtpath', 'enpath']))
+def test_unpack_all_files(root: Path, tmppath: Path, logger: logging.Logger, unpack_all: bool):
+    if unpack_all:
+        version_map: MutableMapping[Tuple[str, Version], Path] = {}
+        digest_map: MutableMapping[Tuple[str, bytes], Path] = {}
+        rep_paths = []
+        err_paths = []
+        for in_path in root.rglob('*.vromfs.bin'):
+            with BinFile(in_path) as bin_file:
+                version = bin_file.version
+                if version is not None:
+                    key = (in_path.name, version)
+                    if key not in version_map:
+                        version_map[key] = in_path
+                    else:
+                        rep_paths.append(in_path)
+                else:
+                    digest = sha1_digest(in_path)
+                    if digest is not None:
+                        key = (in_path.name, digest)
+                        if key not in digest_map:
+                            digest_map[key] = in_path
+                        else:
+                            rep_paths.append(in_path)
+                    else:
+                        err_paths.append(in_path)
+
+        for in_path in chain(version_map.values(), digest_map.values()):
+            out_path = tmppath / root.name / in_path.relative_to(root)
+            failed = successful = 0
+
+            logger.info(f'Начало распаковки {str(in_path)!r}')
+            with VromfsFile(BinFile(in_path)) as vromfs:
+                for result in vromfs.unpack_iter(out_path, out_format=Format.STRICT_BLK):
+                    if result.error is not None:
+                        failed += 1
+                        logger.error(f'[FAIL] {str(in_path)!r}::{str(result.path)!r}: {result.error}')
+                    else:
+                        successful += 1
+            logger.info(f'Конец распаковки {str(in_path)!r}')
+
+            logger.info(f'Успешно распаковано: {successful}/{successful+failed}.')
+
+            if failed:
+                pytest.fail('Ошибка при обработке файлов.')
+    else:
+        pytest.skip("'--unpack-all' cmdline argument")

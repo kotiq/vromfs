@@ -1,21 +1,20 @@
 from collections import OrderedDict
-from enum import IntEnum
 from hashlib import sha1
 from io import BytesIO, IOBase, SEEK_END
 from itertools import chain, repeat
 import logging
 import os
 from pathlib import Path
-from typing import (Any, BinaryIO, Generator, Iterable, Mapping, MutableSequence, NamedTuple, Optional,
+from typing import (Any, BinaryIO, Iterable, Iterator, Mapping, MutableSequence, NamedTuple, Optional,
                     OrderedDict as ODict, Sequence, TextIO, Union)
 import construct as ct
 from construct import this
-from zstandard import DICT_TYPE_AUTO, FORMAT_ZSTD1, ZstdCompressionDict, ZstdDecompressor, ZstdError
+from zstandard import DICT_TYPE_AUTO, FORMAT_ZSTD1, ZstdCompressionDict, ZstdDecompressor
 import blk.text as txt
 import blk.json as jsn
 from blk import Format, Section
-from blk.binary import (compose_fat, compose_names_data, compose_partial_bbf, compose_partial_bbf_zlib,
-                        compose_partial_fat, compose_partial_slim)
+from blk.binary import (BlkType, ComposeError, compose_names, compose_partial_fat_zst, compose_partial_bbf,
+                        compose_partial_bbf_zlib, compose_partial_fat, compose_partial_slim, compose_partial_slim_zst)
 from vromfs.common import file_apply
 from vromfs.ranged_reader import RangedReader
 from .common import FileInfo, NamesData
@@ -33,27 +32,6 @@ Item = Union[os.PathLike, FileInfo]
 class ExtractResult(NamedTuple):
     path: Path
     error: Optional[Exception]
-
-
-class BlkType(IntEnum):
-    BBF = 0
-    FAT = 1
-    FAT_ZST = 2
-    SLIM = 3
-    SLIM_ZST = 4
-    SLIM_ZST_DICT = 5
-    OTHER = -1
-
-    @classmethod
-    def from_byte(cls, byte: bytes) -> 'BlkType':
-        return {
-            0: cls.BBF,  # BBF | BBZ
-            1: cls.FAT,
-            2: cls.FAT_ZST,
-            3: cls.SLIM,
-            4: cls.SLIM_ZST,
-            5: cls.SLIM_ZST_DICT,
-        }.get(byte[0], cls.OTHER)
 
 
 Image = ct.Struct(
@@ -110,7 +88,7 @@ def create_text(path: os.PathLike) -> TextIO:
     return open(path, 'w', newline='', encoding='utf8')
 
 
-class VromfsFile:
+class VromfsFile(IOBase):
     """
     Класс для работы с VROMFS образом.
     """
@@ -273,10 +251,10 @@ class VromfsFile:
             else:
                 full_stream = RangedReader(self._vromfs_stream, info.offset, info.size)
                 try:
-                    full_stream.seek(40)
-                    stream = self.dctx.stream_reader(full_stream)
-                    self._nm = compose_names_data(stream)
-                except (OSError, ZstdError) as e:
+                    ns = compose_names(full_stream, self.dctx)
+                    self._nm = ns.names
+                    logger.debug(f'Разделяемая карта имен {ns.table_digest.hex()}')
+                except ComposeError as e:
                     raise VromfsUnpackError('Ошибка при распаковке таблицы имен.') from e
 
         return self._nm
@@ -345,15 +323,11 @@ class VromfsFile:
         if blk_type is BlkType.FAT:
             section = compose_partial_fat(istream)
         elif blk_type is BlkType.FAT_ZST:
-            size_bs = istream.read(3)
-            size = int.from_bytes(size_bs, byteorder='little')
-            blk_stream = self.dctx.stream_reader(RangedReader(istream, 4, size))
-            section = compose_fat(blk_stream)
+            section = compose_partial_fat_zst(istream, self.dctx)
         elif blk_type is BlkType.SLIM:
             section = compose_partial_slim(self.nm, istream)
         elif blk_type in (BlkType.SLIM_ZST, BlkType.SLIM_ZST_DICT):
-            blk_stream = self.dctx.stream_reader(istream)
-            section = compose_partial_slim(self.nm, blk_stream)
+            section = compose_partial_slim_zst(self.nm, istream, self.dctx)
         elif blk_type is BlkType.BBF:
             triple = istream.read(3)
             if triple == b'BBF':
@@ -508,8 +482,8 @@ class VromfsFile:
 
         return infos
 
-    def unpack_gen(self, path: Optional[os.PathLike] = None, items: Optional[Iterable[Item]] = None,
-                   out_format: Format = Format.RAW, is_sorted: bool = False) -> Generator[ExtractResult, None, None]:
+    def unpack_iter(self, path: Optional[os.PathLike] = None, items: Optional[Iterable[Item]] = None,
+                    out_format: Format = Format.RAW, is_sorted: bool = False) -> Iterator[ExtractResult]:
         """
         Распаковка группы файлов с заданным типом результата.
         Если path задан как None, принимается путь текущей директории.
@@ -519,7 +493,7 @@ class VromfsFile:
         :param items: Объекты файлов для распаковки.
         :param out_format: Формат выходных данных.
         :param is_sorted: Сортировать ключи для JSON.
-        :returns: Генератор ExtractResult, результат преобразования.
+        :returns: Итератор ExtractResult, результат преобразования.
         :raises VromfsUnpackError: Ошибка при построении пространства имен.
         :raises TypeError: Неверный тип path.
         :raises KeyError: Внутренний путь отсутствует в карте имен.
@@ -555,7 +529,7 @@ class VromfsFile:
         :raises KeyError: Внутренний путь отсутствует в карте имен.
         """
 
-        return next(self.unpack_gen(path, [item], out_format))
+        return next(self.unpack_iter(path, [item], out_format))
 
     def check(self) -> Optional[Sequence[Path]]:
         """

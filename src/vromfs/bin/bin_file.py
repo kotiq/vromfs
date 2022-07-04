@@ -180,7 +180,7 @@ class BinFile(IOBase):
         self._stream = RangedReader(self._bin_stream, offset, size)
 
     def _set_compressed_stream(self):
-        logger.debug('Сброс потока.')
+        logger.debug('Сброс zstd потока.')
         offset = self.meta.offset
         size = self.meta.header.packed.size
         obfs_reader = ObfsReader(RangedReader(self._bin_stream, offset, size), size)

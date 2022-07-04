@@ -57,3 +57,12 @@ def source(source_path, paths, contents):
         q = source_path / p
         q.write_bytes(c)
     return source_path
+
+
+def pytest_addoption(parser):
+    parser.addoption('--unpack-all', action='store_true', default=False)
+
+
+@pytest.fixture(scope='session')
+def unpack_all(pytestconfig):
+    return pytestconfig.getoption('unpack_all')
