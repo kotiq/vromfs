@@ -9,7 +9,6 @@ from vromfs.bin import BinFile
 from vromfs.vromfs import VromfsFile
 
 FILES_INFO_VERSION = '1.1'
-FORMATS = set(Format) - {Format.JSON_MIN}
 
 
 def iname(f: Format) -> str:
@@ -34,13 +33,18 @@ def get_logger(name: str) -> logging.Logger:
 logger = get_logger('vromfs')
 
 
-class ArgsNS(NamedTuple):
+class Args(NamedTuple):
+    @classmethod
+    def from_namespace(cls, ns: Namespace) -> 'Args':
+        return cls(**vars(ns))
+
     out_format: Format
     is_sorted: bool
+    is_minified: bool
     dump_files_info: bool
-    maybe_out_path: Optional[Path]
+    out_path: Optional[Path]
     input: BinaryIO
-    maybe_in_files: Optional[TextIO]
+    in_files: Optional[TextIO]
     exit_first: bool
 
 
@@ -51,28 +55,30 @@ class CreateFormat(Action):
         setattr(namespace, self.dest, f)
 
 
-def get_args() -> ArgsNS:
+def get_args() -> Args:
     parser = ArgumentParser(description='Распаковщик vromfs bin контейнера.')
-    parser.add_argument('--format', dest='out_format', choices=sorted(map(iname, FORMATS)),
+    parser.add_argument('--format', dest='out_format', choices=sorted(map(iname, Format)),
                         action=CreateFormat, default=iname(Format.JSON),
                         help='Формат блоков. По умолчанию %(default)s.')
     parser.add_argument('--sort', dest='is_sorted', action='store_true', default=False,
                         help='Сортировать ключи для JSON*.')
+    parser.add_argument('--minify', dest='is_minified', action='store_true', default=False,
+                        help='Минифицировать JSON*.')
     parser.add_argument('--metadata', dest='dump_files_info', action='store_true', default=False,
                         help='Сводка о файлах: имя => SHA1 дайджест.')
-    parser.add_argument('--input_filelist', dest='maybe_in_files', type=FileType(), default=None,
+    parser.add_argument('--input_filelist', dest='in_files', type=FileType(), default=None,
                         help=('Файл со списком файлов в формате JSON. '
                               '"-" - читать из stdin.'))
     parser.add_argument('-x', '--exitfirst', dest='exit_first', action='store_true', default=False,
                         help='Закончить распаковку при первой ошибке.')
-    parser.add_argument('-o', '--output', dest='maybe_out_path', type=Path, default=None,
+    parser.add_argument('-o', '--output', dest='out_path', type=Path, default=None,
                         help=('Выходной файл для сводки о файлах или родитель выходной директории для распаковки. '
                               'Если output не указан, вывод сводки о файлах в stdout, выходная директория '
                               'для распаковки - имя контейнера с постфиксом _u.')
                         )
     parser.add_argument(dest='input', type=FileType('rb'), help='Контейнер.')
-    args_ns = parser.parse_args()
-    return ArgsNS(**args_ns.__dict__)
+    args = parser.parse_args()
+    return Args.from_namespace(args)
 
 
 def dump_files_info(vromfs: VromfsFile,
@@ -94,50 +100,50 @@ def dump_files_info(vromfs: VromfsFile,
 
 
 def main():
-    args_ns = get_args()
+    args = get_args()
 
-    vromfs = VromfsFile(BinFile(args_ns.input))
+    vromfs = VromfsFile(BinFile(args.input))
 
-    if args_ns.maybe_in_files is None:
-        maybe_paths = args_ns.maybe_in_files
+    if args.in_files is None:
+        paths = args.in_files
     else:
         try:
-            names = json.load(args_ns.maybe_in_files)
-            maybe_paths = [Path(name) for name in names]
+            names = json.load(args.in_files)
+            paths = [Path(name) for name in names]
         except Exception as e:
             logger.error('Ошибка при получении списка файлов.')
             logger.exception(e)
             return 1
         else:
-            if not len(maybe_paths):
+            if not len(paths):
                 logger.info('Нет файлов для извлечения.')
                 return 0
 
-    if args_ns.dump_files_info:
+    if args.dump_files_info:
         try:
-            if args_ns.maybe_out_path is None:
-                dump_files_info(vromfs, maybe_paths)
+            if args.out_path is None:
+                dump_files_info(vromfs, paths)
             else:
-                with open(args_ns.maybe_out_path, 'w') as ostream:
-                    dump_files_info(vromfs, maybe_paths, ostream)
+                with open(args.out_path, 'w') as ostream:
+                    dump_files_info(vromfs, paths, ostream)
         except Exception as e:
             logger.error('Ошибка при формировании сводки о файлах.')
             logger.exception(e)
             return 1
     else:
-        if args_ns.maybe_out_path is None:
-            out_path = Path(args_ns.input.name + '_u')
+        if args.out_path is None:
+            out_path = Path(args.input.name + '_u')
         else:
-            out_path = args_ns.maybe_out_path / Path(args_ns.input.name).name
+            out_path = args.out_path / Path(args.input.name).name
 
         failed = successful = 0
         try:
             logger.info('Начало распаковки.')
-            for result in vromfs.unpack_iter(out_path, maybe_paths, args_ns.out_format, args_ns.is_sorted):
+            for result in vromfs.unpack_iter(paths, out_path, args.out_format, args.is_sorted, args.is_minified):
                 if result.error is not None:
                     failed += 1
-                    logger.error(f'[FAIL] {args_ns.input.name!r}::{str(result.path)!r}: {result.error}')
-                    if args_ns.exit_first:
+                    logger.error(f'[FAIL] {args.input.name!r}::{str(result.path)!r}: {result.error}')
+                    if args.exit_first:
                         break
                 else:
                     successful += 1

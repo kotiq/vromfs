@@ -32,7 +32,7 @@ def test_unpack_all_check_digests(vromfsfile_: VromfsFile, out_format: Format, t
     failed = successful = 0
 
     logger.info(f'Начало распаковки {str(in_path)!r}')
-    for result in vromfsfile_.unpack_iter(out_path, out_format=out_format):
+    for result in vromfsfile_.unpack_iter(path=out_path, out_format=out_format):
         if result.error is not None:
             failed += 1
             logger.error(f'[FAIL] {str(in_path)!r}::{str(result.path)!r}: {result.error}')
@@ -69,7 +69,7 @@ def test_unpack_all_blk_strict_blk(vromfsbinfile: VromfsFile, tmppath: Path, log
     failed = successful = 0
     infos = tuple(filter(lambda i: i.path.suffix == '.blk', vromfsfile.info_map.values()))
     logger.info(f'Начало распаковки {str(in_path)!r}')
-    for result in vromfsfile.unpack_iter(out_path, infos, Format.STRICT_BLK):
+    for result in vromfsfile.unpack_iter(infos, out_path, Format.STRICT_BLK):
         if result.error is not None:
             failed += 1
             logger.error(f'[FAIL] {str(in_path)!r}::{str(result.path)!r}: {result.error}')
@@ -110,8 +110,9 @@ def sha1_digest(path: Path, chunk_size: int = 2**20) -> Optional[bytes]:
         return m.digest()
 
 
+@pytest.mark.parametrize('format_', [Format.RAW, Format.STRICT_BLK], ids=lambda e: e.name.lower())
 @pytest.mark.parametrize('root', lazy_fixture(['wtpath', 'enpath']))
-def test_unpack_all_files(root: Path, tmppath: Path, logger: logging.Logger, unpack_all: bool):
+def test_unpack_all_files(root: Path, tmppath: Path, logger: logging.Logger, unpack_all: bool, format_: Format):
     if unpack_all:
         version_map: MutableMapping[Tuple[str, Version], Path] = {}
         digest_map: MutableMapping[Tuple[str, bytes], Path] = {}
@@ -138,12 +139,12 @@ def test_unpack_all_files(root: Path, tmppath: Path, logger: logging.Logger, unp
                         err_paths.append(in_path)
 
         for in_path in chain(version_map.values(), digest_map.values()):
-            out_path = tmppath / root.name / in_path.relative_to(root)
+            out_path = tmppath / f'{root.name}-{format_.name}' / in_path.relative_to(root)
             failed = successful = 0
 
             logger.info(f'Начало распаковки {str(in_path)!r}')
             with VromfsFile(BinFile(in_path)) as vromfs:
-                for result in vromfs.unpack_iter(out_path, out_format=Format.STRICT_BLK):
+                for result in vromfs.unpack_iter(path=out_path, out_format=format_):
                     if result.error is not None:
                         failed += 1
                         logger.error(f'[FAIL] {str(in_path)!r}::{str(result.path)!r}: {result.error}')

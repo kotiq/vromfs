@@ -23,7 +23,11 @@ def get_logger(name: str) -> logging.Logger:
 logger = get_logger('vromfs')
 
 
-class ArgsNS(NamedTuple):
+class Args(NamedTuple):
+    @classmethod
+    def from_namespace(cls, ns: Namespace) -> 'Args':
+        return cls(**vars(ns))
+
     version: Version
     out_path: Path
     in_path: Path
@@ -71,7 +75,7 @@ def make_in_path(out_path_dest: str) -> Type[Action]:
     return MakeInputPath
 
 
-def get_args() -> ArgsNS:
+def get_args() -> Args:
     parser = ArgumentParser(description='Упаковщик vromfs bin контейнера.')
     parser.add_argument('-v', '--ver', dest='version',  action=MakeVersion, required=True,
                         help='Версия архива xxx.yyy.zzz.www')
@@ -79,8 +83,8 @@ def get_args() -> ArgsNS:
                         help='Выходной файл. По умолчанию %(default)s')
     parser.add_argument('in_path', action=make_in_path('out_path'), help='Директория для упаковки.')
 
-    args_ns = parser.parse_args()
-    return ArgsNS(**args_ns.__dict__)
+    args = parser.parse_args()
+    return Args.from_namespace(args)
 
 
 def main() -> int:

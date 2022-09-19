@@ -72,11 +72,11 @@ Image = ct.Struct(
 )
 
 
-def serialize_text(root: Section, ostream: TextIO, out_format: Format, is_sorted: bool) -> None:
+def serialize_text(root: Section, ostream: TextIO, out_format: Format, is_sorted: bool, is_minified: bool) -> None:
     if out_format is Format.STRICT_BLK:
         txt.serialize(root, ostream, dialect=txt.StrictDialect)
     elif out_format in (Format.JSON, Format.JSON_2, Format.JSON_3):
-        jsn.serialize(root, ostream, out_format, is_sorted)
+        jsn.serialize(root, ostream, out_format, is_sorted, is_minified)
 
 
 def is_text(bs: Iterable[bytes]) -> bool:
@@ -297,7 +297,8 @@ class VromfsFile(IOBase):
         reader = RangedReader(self._vromfs_stream, info.offset, info.size)
         file_apply(reader, lambda c: ct.stream_write(ostream, c), info.size)
 
-    def _unpack_info_into_blk(self, info: FileInfo, ostream: TextIO, out_format: Format, is_sorted: bool) -> None:
+    def _unpack_info_into_blk(self, info: FileInfo, ostream: TextIO,
+                              out_format: Format, is_sorted: bool, is_minified: bool) -> None:
         """
         Распаковка файла с преобразованием двоичных blk в текстовый поток, открытый для записи.
         Текстовые файлы копируются как есть как есть.
@@ -306,6 +307,7 @@ class VromfsFile(IOBase):
         :param ostream: Выходной поток.
         :param out_format: Формат выходных данных.
         :param is_sorted: Сортировать ключи для JSON.
+        :param is_minified: Минифицировать JSON.
         :raises ct.ConstructError: Ошибка при чтении потока. Ошибка при записи потока.
         :raises zstd.ZstdError: Ошибка при распаковке ZSTD контейнера.
         :raises blk.ComposeError: Ошибка при формировании блока.
@@ -347,15 +349,13 @@ class VromfsFile(IOBase):
             if head:
                 ostream.buffer.write(head)
             ostream.buffer.write(bs)
-            if is_text(chain(head, bs)):
-                logger.debug(f'{str(info.path)!r}: {blk_type.name} => TEXT')
-            else:
-                logger.debug(f'{str(info.path)!r}: {blk_type.name} => UNKNOWN')
+            out_format_name = 'TEXT' if is_text(chain(head, bs)) else 'UNKNOWN'
         else:
-            serialize_text(section, ostream, out_format, is_sorted)
-            logger.debug(f'{str(info.path)!r}: {blk_type.name} => {out_format.name}')
+            serialize_text(section, ostream, out_format, is_sorted, is_minified)
+            out_format_name = out_format.name
+        logger.debug(f'{str(info.path)!r}: {blk_type.name} => {out_format_name}')
 
-    def _unpack_item(self, item: Item, path: Path, out_format: Format, is_sorted: bool) -> Path:
+    def _unpack_item(self, item: Item, path: Path, out_format: Format, is_sorted: bool, is_minified: bool) -> Path:
         """
         Распаковка одного файла с заданным типом результата.
         В случае ошибки распаковки частичный результат доступен как ``target~``.
@@ -364,6 +364,7 @@ class VromfsFile(IOBase):
         :param path: Путь выходной директории.
         :param out_format: Формат выходных данных.
         :param is_sorted: Сортировать ключи для JSON.
+        :param is_minified: Минифицировать JSON.
         :return: Путь распакованного файла.
         :raises EnvironmentError: Ошибка при создании директории.
         Ошибка при инициализации выходного потока.
@@ -383,7 +384,7 @@ class VromfsFile(IOBase):
         if out_format is not Format.RAW and item.path.suffix == '.blk':
             with create_text(tmp) as ostream:
                 try:
-                    self._unpack_info_into_blk(item, ostream, out_format, is_sorted)
+                    self._unpack_info_into_blk(item, ostream, out_format, is_sorted, is_minified)
                     ostream.close()
                     tmp.replace(target)
                 except Exception:
@@ -432,7 +433,7 @@ class VromfsFile(IOBase):
     @staticmethod
     def _validated_path(path: Optional[os.PathLike]) -> Path:
         """
-        Проверка имени директории. Текущая директория, если задана как None/
+        Проверка имени директории. Текущая директория, если задана как None.
 
         :param path: Имя директории.
         :return: Имя директории.
@@ -482,8 +483,9 @@ class VromfsFile(IOBase):
 
         return infos
 
-    def unpack_iter(self, path: Optional[os.PathLike] = None, items: Optional[Iterable[Item]] = None,
-                    out_format: Format = Format.RAW, is_sorted: bool = False) -> Iterator[ExtractResult]:
+    def unpack_iter(self, items: Optional[Iterable[Item]] = None, path: Optional[os.PathLike] = None,
+                    out_format: Format = Format.RAW, is_sorted: bool = False, is_minified: bool = False
+                    ) -> Iterator[ExtractResult]:
         """
         Распаковка группы файлов с заданным типом результата.
         Если path задан как None, принимается путь текущей директории.
@@ -493,6 +495,7 @@ class VromfsFile(IOBase):
         :param items: Объекты файлов для распаковки.
         :param out_format: Формат выходных данных.
         :param is_sorted: Сортировать ключи для JSON.
+        :param is_minified: Минифицировать JSON.
         :returns: Итератор ExtractResult, результат преобразования.
         :raises VromfsUnpackError: Ошибка при построении пространства имен.
         :raises TypeError: Неверный тип path.
@@ -508,7 +511,7 @@ class VromfsFile(IOBase):
 
         for info in infos:
             try:
-                self._unpack_item(info, path, out_format, is_sorted)
+                self._unpack_item(info, path, out_format, is_sorted, is_minified)
             except Exception as e:
                 yield ExtractResult(info.path, e)
             else:
@@ -529,7 +532,7 @@ class VromfsFile(IOBase):
         :raises KeyError: Внутренний путь отсутствует в карте имен.
         """
 
-        return next(self.unpack_iter(path, [item], out_format))
+        return next(self.unpack_iter([item], path, out_format))
 
     def check(self) -> Optional[Sequence[Path]]:
         """
