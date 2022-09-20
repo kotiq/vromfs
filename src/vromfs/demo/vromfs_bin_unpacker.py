@@ -20,7 +20,7 @@ def format_(s: str) -> Format:
 
 
 def get_logger(name: str) -> logging.Logger:
-    formatter = logging.Formatter('%(created)s %(levelname)s %(message)s')
+    formatter = logging.Formatter('%(created)f %(levelname)s %(message)s')
     logger_ = logging.getLogger(name)
     logger_.level = logging.DEBUG
     console_handler = logging.StreamHandler()
@@ -46,6 +46,7 @@ class Args(NamedTuple):
     input: BinaryIO
     in_files: Optional[TextIO]
     exit_first: bool
+    loglevel: str
 
 
 class CreateFormat(Action):
@@ -55,11 +56,17 @@ class CreateFormat(Action):
         setattr(namespace, self.dest, f)
 
 
+class CreateLogLevel(Action):
+    def __call__(self, parser: ArgumentParser, namespace: Namespace, values: str, option_string=None) -> None:
+        level = values.upper()
+        setattr(namespace, self.dest, level)
+
+
 def get_args() -> Args:
     parser = ArgumentParser(description='Распаковщик vromfs bin контейнера.')
     parser.add_argument('--format', dest='out_format', choices=sorted(map(iname, Format)),
-                        action=CreateFormat, default=iname(Format.JSON),
-                        help='Формат блоков. По умолчанию %(default)s.')
+                        action=CreateFormat, default=Format.JSON,
+                        help='Формат блоков. По умолчанию {}.'.format(iname(Format.JSON)))
     parser.add_argument('--sort', dest='is_sorted', action='store_true', default=False,
                         help='Сортировать ключи для JSON*.')
     parser.add_argument('--minify', dest='is_minified', action='store_true', default=False,
@@ -76,6 +83,9 @@ def get_args() -> Args:
                               'Если output не указан, вывод сводки о файлах в stdout, выходная директория '
                               'для распаковки - имя контейнера с постфиксом _u.')
                         )
+    parser.add_argument('--loglevel', action=CreateLogLevel, choices=('critical', 'error', 'warning', 'info', 'debug'),
+                        default='INFO',
+                        help='Уровень сообщений. По умолчанию info.')
     parser.add_argument(dest='input', type=FileType('rb'), help='Контейнер.')
     args = parser.parse_args()
     return Args.from_namespace(args)
@@ -101,6 +111,7 @@ def dump_files_info(vromfs: VromfsFile,
 
 def main():
     args = get_args()
+    logger.setLevel(args.loglevel)
 
     vromfs = VromfsFile(BinFile(args.input))
 
@@ -142,15 +153,16 @@ def main():
             for result in vromfs.unpack_iter(paths, out_path, args.out_format, args.is_sorted, args.is_minified):
                 if result.error is not None:
                     failed += 1
-                    logger.error(f'[FAIL] {args.input.name!r}::{str(result.path)!r}: {result.error}')
+                    logger.info(f'[FAIL] {args.input.name!r}::{str(result.path)!r}: {result.error}')
                     if args.exit_first:
                         break
                 else:
+                    logger.info(f'[ OK ] {args.input.name!r}')
                     successful += 1
 
             logger.info('Успешно распаковано: {}/{}.'.format(successful, successful+failed))
             if failed:
-                logger.error('Ошибка при обработке файлов.')
+                logger.info('Ошибка при обработке файлов.')
                 return 1
 
         except Exception as e:

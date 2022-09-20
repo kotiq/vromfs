@@ -72,8 +72,9 @@ python -m json.tool
 vromfs_bin_unpacker [--format {json,json_2,json_3,raw,strict_blk}]
                     [--sort]
                     [--input_filelist MAYBE_IN_FILES]
-                    [-x]
+                    [-x]                    
                     [-o MAYBE_OUT_PATH]
+                    [--loglevel {critical,error,warning,info,debug}]
                     input
 ```
 
@@ -87,6 +88,7 @@ vromfs_bin_unpacker [--format {json,json_2,json_3,raw,strict_blk}]
 - `-x, --exitfirst` Закончить распаковку при первой ошибке.
 - `-o, --output` Родитель для выходной директории, выходная директория - имя контейнера. Если не указан, `cwd`, 
 выходная директория - имя контейнера с постфиксом `_u`.
+- `--loglevel` Уровень сообщений из `critical`, `error`, `warning`, `info`, `debug`. По умолчанию `info`.
 - `input` Файл .vromfs.bin контейнера.
 
 Пример распаковки файлов `config/wpcost.blk`, `version`, `nop` из контейнера `char.vromfs.bin`.

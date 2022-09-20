@@ -319,41 +319,44 @@ class VromfsFile(IOBase):
         if not fst:
             logger.debug(f'{str(info.path)!r}: EMPTY')
             return
-
         blk_type = BlkType.from_byte(fst)
-        head = b''
-        if blk_type is BlkType.FAT:
-            section = compose_partial_fat(istream)
-        elif blk_type is BlkType.FAT_ZST:
-            section = compose_partial_fat_zst(istream, self.dctx)
-        elif blk_type is BlkType.SLIM:
-            section = compose_partial_slim(self.nm, istream)
-        elif blk_type in (BlkType.SLIM_ZST, BlkType.SLIM_ZST_DICT):
-            section = compose_partial_slim_zst(self.nm, istream, self.dctx)
-        elif blk_type is BlkType.BBF:
-            triple = istream.read(3)
-            if triple == b'BBF':
-                section = compose_partial_bbf(istream)
-            elif triple == b'BBz':
-                section = compose_partial_bbf_zlib(istream)
+        try:
+            head = b''
+            if blk_type is BlkType.FAT:
+                section = compose_partial_fat(istream)
+            elif blk_type is BlkType.FAT_ZST:
+                section = compose_partial_fat_zst(istream, self.dctx)
+            elif blk_type is BlkType.SLIM:
+                section = compose_partial_slim(self.nm, istream)
+            elif blk_type in (BlkType.SLIM_ZST, BlkType.SLIM_ZST_DICT):
+                section = compose_partial_slim_zst(self.nm, istream, self.dctx)
+            elif blk_type is BlkType.BBF:
+                triple = istream.read(3)
+                if triple == b'BBF':
+                    section = compose_partial_bbf(istream)
+                elif triple == b'BBz':
+                    section = compose_partial_bbf_zlib(istream)
+                else:
+                    section = None
+                    head = fst + triple
             else:
                 section = None
-                head = fst + triple
-        else:
-            section = None
-            head = fst
+                head = fst
 
-        if section is None:
-            bs = istream.read()
-            ostream.flush()
-            if head:
-                ostream.buffer.write(head)
-            ostream.buffer.write(bs)
-            out_format_name = 'TEXT' if is_text(chain(head, bs)) else 'UNKNOWN'
-        else:
-            serialize_text(section, ostream, out_format, is_sorted, is_minified)
-            out_format_name = out_format.name
-        logger.debug(f'{str(info.path)!r}: {blk_type.name} => {out_format_name}')
+            if section is None:
+                bs = istream.read()
+                ostream.flush()
+                if head:
+                    ostream.buffer.write(head)
+                ostream.buffer.write(bs)
+                out_format_name = 'TEXT' if is_text(chain(head, bs)) else 'UNKNOWN'
+            else:
+                serialize_text(section, ostream, out_format, is_sorted, is_minified)
+                out_format_name = out_format.name
+            logger.debug(f'{str(info.path)!r}: {blk_type.name} => {out_format_name}')
+        except Exception:
+            logger.debug(f'{str(info.path)!r}: {blk_type.name}')
+            raise
 
     def _unpack_item(self, item: Item, path: Path, out_format: Format, is_sorted: bool, is_minified: bool) -> Path:
         """
