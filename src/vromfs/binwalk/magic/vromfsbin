@@ -1,0 +1,25 @@
+0x00        string              VRF             Dagor Engine Bin Archive
+
+>0x03       regex               [^sx]           {invalid}
+>0x03       byte                0x73            # \b, header: short
+>0x03       byte                0x78            # \b, header: extended
+>>0x14      ulelong             >0              \b, version:
+>>>0x17     byte                x               %d
+>>>0x16     byte                x               \b.%d
+>>>0x15     byte                x               \b.%d
+>>>0x14     byte                x               \b.%d
+
+>0x04       string              \x00\x00PC      \b, platform: PC
+>0x04       string              \x00iOS         \b, platform: iOS
+>0x04       string              \x00and         \b, platform: Android
+
+>0x08       ulelong             >0              \b, size: %d
+>>0x0c      ulelong>>30         <0x1            {invalid}
+>>0x0c      ulelong>>30         >0x3            {invalid}
+>>0x0c      ulelong>>30         &0x1            # \b, compressed
+>>>0x0c     ulelong&0x3ffffff   x               \b -> %d
+>>>0x03     byte                0x73            # short
+>>>>0x10    ubelong             !0x7d1f7a57     {invalid}  # obfuscated zstd magic
+>>>0x03     byte                0x78            # extended
+>>>>0x18    ubelong             !0x7d1f7a57     {invalid}  # obfuscated zstd magic
+>>0x0c      ulelong>>30         &0x2            \b, checked

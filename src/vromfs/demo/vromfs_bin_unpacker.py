@@ -157,7 +157,7 @@ def main():
                     if args.exit_first:
                         break
                 else:
-                    logger.info(f'[ OK ] {args.input.name!r}')
+                    logger.info(f'[ OK ] {args.input.name!r}::{str(result.path)!r}')
                     successful += 1
 
             logger.info('Успешно распаковано: {}/{}.'.format(successful, successful+failed))
