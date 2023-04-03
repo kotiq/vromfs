@@ -31,6 +31,8 @@ class Args(NamedTuple):
     version: Version
     out_path: Path
     in_path: Path
+    compressed: bool
+    checked: bool
 
 
 class MakeVersion(Action):
@@ -76,14 +78,20 @@ def make_in_path(out_path_dest: str) -> Type[Action]:
 
 
 def get_args() -> Args:
-    parser = ArgumentParser(description='Упаковщик vromfs bin контейнера.')
-    parser.add_argument('-v', '--ver', dest='version',  action=MakeVersion, required=True,
+    parser = ArgumentParser(description='Упаковщик vromfs bin контейнера.',
+                            epilog='Если не указаны ни checked ни compressed, применяются оба аргумента.')
+    parser.add_argument('-v', '--ver', dest='version',  action=MakeVersion,
                         help='Версия архива xxx.yyy.zzz.www')
+    parser.add_argument('--compressed', action='store_true', default=False, help='Сжать образ.')
+    parser.add_argument('--checked', action='store_true', default=False, help='Добавить дайджест несжатого образа.')
     parser.add_argument('-o', '--output', dest='out_path', type=Path, default=Path('out.vromfs.bin'),
                         help='Выходной файл. По умолчанию %(default)s')
     parser.add_argument('in_path', action=make_in_path('out_path'), help='Директория для упаковки.')
-
     args = parser.parse_args()
+
+    if not (args.compressed or args.checked):
+        args.compressed = args.checked = True
+
     return Args.from_namespace(args)
 
 
@@ -107,7 +115,7 @@ def main() -> int:
     with open(args_ns.out_path, 'wb') as bin_stream:
         try:
             BinFile.pack_into(vromfs_stream, bin_stream, PlatformType.PC, args_ns.version,
-                              compressed=True, checked=True, size=vromfs_size)
+                              compressed=args_ns.compressed, checked=args_ns.checked, size=vromfs_size)
         except BinPackError as e:
             logger.error(f'temp vromfs => {args_ns.out_path}')
             logger.exception(e)
