@@ -12,6 +12,15 @@ cd vromfs
 pip install .
 ```
 
+## Сборка документации
+
+Диаграммы построены с использованием [drawio](https://github.com/jgraph/drawio-desktop/)
+
+```shell
+pip install -r requirements-docs.txt
+python setup.py build_sphinx
+```
+
 ## Распаковка файлов
 
 Пример распаковщика `src/vromfs/demo/vromfs_bin_unpacker.py`.
@@ -128,7 +137,9 @@ $ tree -s --metafirst /tmp/char.vromfs.bin
 
 ```shell
  vromfs_bin_packer [-h]
-                   -v VERSION 
+                   [-v VERSION]
+                   [--compressed] 
+                   [--checked]
                    [-o OUT_PATH] 
                    in_path
 ```
@@ -137,8 +148,12 @@ $ tree -s --metafirst /tmp/char.vromfs.bin
 
 - `-h, --help` Показать справку.
 - `-v, --ver` Версия архива x.y.z.w, где x, y, z, w из 0 .. 255. 
+- `--compressed` Сжать образ.
+- `--checked` Добавить дайджест несжатого образа.
 - `-o, --output` Выходной файл. По умолчанию `./out.vromfs.bin`. 
 - `in_path` Директория для упаковки.
+
+Если не указаны ни checked ни compressed, применяются оба аргумента.
 
 В контейнер попадают файлы, перечисленные в директории, но не сама директория. 
 

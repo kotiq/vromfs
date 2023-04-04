@@ -16,3 +16,13 @@ dist/
 
 # setuptools_scm version
 src/vromfs/_version.py
+
+# Sphinx documentation
+docs/_build/
+
+# drawio
+docs/**/*.drawio.bkp
+docs/**/*.drawio.dtmp
+
+# hex editor tags
+tests/samples/**/*.tags
